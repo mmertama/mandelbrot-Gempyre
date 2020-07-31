@@ -84,7 +84,9 @@ if(USE_MPFR)
         )
 
     add_dependencies(${PROJECT_NAME} mpfr)
-    set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" gmp)
+    find_library(GMP gmp REQUIRED PATHS -L/usr/local/Cellar/gmp/6.2.0/lib) #installed using 'brew install gmp'
+    set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" ${GMP})
+
 
 endif()
 
