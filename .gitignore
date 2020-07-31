@@ -35,5 +35,5 @@ CMakeFiles
 MakeFile
 calc
 cmake_install.cmake
-src/mpfr*
+src/mpfr-stamp
 tmp

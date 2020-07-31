@@ -44,12 +44,12 @@ if(USE_MPFR)
    #  find_library(BM_LIB mpfr PATHS  ${BM_PATH} ${BM_PATH}/src PATH_SUFFIXES .libs)
 endif()
 
-set(TELEX_PATH $ENV{TELEX_DIR})
-find_package (telex REQUIRED PATHS ${TELEX_PATH})
-include(${TELEX_PATH}/scripts/addResource.cmake_script)
+set(GEMPYRE_PATH $ENV{GEMPYRE_DIR})
+find_package (gempyre REQUIRED PATHS ${GEMPYRE_PATH})
+include(${GEMPYRE_PATH}/scripts/addResource.cmake_script)
 
 include_directories(
-     ${TELEX_PATH}/telexlib/include
+     ${GEMPYRE_PATH}/gempyrelib/include
     include
     ${BM_INCLUDE_PATH}
 )
@@ -67,19 +67,29 @@ add_executable(${PROJECT_NAME}
 
 
 if(USE_MPFR)
-    externalproject_add(mpfr
+    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/mpfr-4.0.2.tar.gz")
+        set(MPRF_URI "${CMAKE_CURRENT_SOURCE_DIR}/src/mpfr-4.0.2.tar.gz")
+    else()
+         set(MPRF_URI "https://www.mpfr.org/mpfr-current/mpfr-4.0.2.tar.gz")
+    endif()
+
+   externalproject_add(mpfr
         BUILD_IN_SOURCE 1
         PREFIX ${CMAKE_CURRENT_SOURCE_DIR}
-        URL https://www.mpfr.org/mpfr-current/mpfr-4.0.2.tar.gz
+        URL ${MPRF_URI}
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/mprf
         CONFIGURE_COMMAND "./configure"
         INSTALL_COMMAND ""
+        TIMEOUT 10
         )
+
     add_dependencies(${PROJECT_NAME} mpfr)
-    set(BM_LIB "${BM_PATH}/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" gmp)
+    set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" gmp)
+
 endif()
 
 addResource(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
 
-target_link_libraries (${PROJECT_NAME} telex ${BM_LIB})
+target_link_libraries (${PROJECT_NAME} gempyre ${BM_LIB})
  
 
