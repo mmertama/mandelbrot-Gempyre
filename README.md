@@ -1,2 +1,2 @@
-# mandelbrot-Telex
-Mandelbrot using Telex for UI
+# mandelbrot-Gempyre
+Mandelbrot using Gempyre for UI
