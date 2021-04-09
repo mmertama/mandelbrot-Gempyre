@@ -39,3 +39,4 @@ src/mpfr-stamp
 tmp
 builds
 src/mprf
+CMakeLists.txt.user

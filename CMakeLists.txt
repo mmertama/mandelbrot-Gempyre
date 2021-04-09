@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.16)
 
 set(NAME mandelbrot)
 project (${NAME})
@@ -44,12 +44,24 @@ if(USE_MPFR)
    #  find_library(BM_LIB mpfr PATHS  ${BM_PATH} ${BM_PATH}/src PATH_SUFFIXES .libs)
 endif()
 
+option(GEMPYRE_LIB OFF)
+
 set(GEMPYRE_PATH $ENV{GEMPYRE_DIR})
-find_package (gempyre REQUIRED PATHS ${GEMPYRE_PATH})
-include(${GEMPYRE_PATH}/scripts/addResource.cmake_script)
+if(GEMPYRE_LIB)
+    find_library(gempyre NAMES libgempyre.a PATHS ${GEMPYRE_PATH}/builds/build-Gempyre-Desktop_Qt_5_15_0_clang_64bit-Debug/gempyrelib REQUIRED)
+    find_library(socket NAMES uSockets.a PATHS ${GEMPYRE_PATH}/gempyrelib/extra/uNetworking/uSockets REQUIRED)
+    set(GEMPYRE_LIBS ${gempyre} ${socket})
+    message("Libs: ${GEMPYRE_LIBS}")
+else()
+
+    find_package (gempyre REQUIRED)
+
+endif()
+
+include(addResource)
 
 include_directories(
-     ${GEMPYRE_PATH}/gempyrelib/include
+    #${GEMPYRE_PATH}/gempyrelib/include
     include
     ${BM_INCLUDE_PATH}
 )
@@ -92,6 +104,9 @@ endif()
 
 addResource(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
 
-target_link_libraries (${PROJECT_NAME} gempyre ${BM_LIB})
- 
+if(GEMPYRE_LIB)
+    target_link_libraries (${PROJECT_NAME} ${GEMPYRE_LIBS} ${BM_LIB})
+else()
+    target_link_libraries (${PROJECT_NAME} gempyre::gempyre ${BM_LIB})
+endif()
 
