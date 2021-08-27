@@ -5,14 +5,14 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2019
+ *                       Copyright (c) 2019-2021
  *                       Henrik Vestermark
  *                       Denmark
  *
  *                       All Rights Reserved
  *
  *   This source file is subject to the terms and conditions of the
- *   Future Team Software License Agreement which restricts the manner
+ *   Henrik Vestermark Software License Agreement which restricts the manner
  *   in which it may be used.
  *   Mail: hve@hvks.com
  *
@@ -34,13 +34,15 @@
  * Version	Author/Date		Description of changes
  * -------  -----------		----------------------
  * 01.01	HVE/15-JUL-2019	Initial release
+ * 01.02	HVE/12-Aug-2020	Change precision type from unsinged int to size_t to enable both 32 and 64b it target.
+ * 01.03	HVE/24-Mar-2021 Updated license info
  *
  * End of Change Record
  * --------------------------------------------------------------------------
 */
 
 /* define version string */
-static char _VC_[] = "@(#)fractionprecision.h 01.01 -- Copyright (C) Henrik Vestermark";
+static char _VC_[] = "@(#)fractionprecision.h 01.03 -- Copyright (C) Henrik Vestermark";
 
 #include <iostream>
 
@@ -53,7 +55,7 @@ template<class _Ty> class fraction_precision {
 
       // constructor
 	  fraction_precision(const _Ty& a = (_Ty)0, const _Ty& b = (_Ty)1) : n(a), d(b) { normalize(); }		// fraction constructions
-	  fraction_precision(const _Ty& whole, const _Ty& a, const _Ty& b) : n(a + w*b), d(b) { normalize(); }  // mixed number constructions
+	  fraction_precision(const _Ty& whole, const _Ty& a, const _Ty& b) : n(a + whole*b), d(b) { normalize(); }  // mixed number constructions
 
       // constructor for any other type to _Ty
       template<class _X> fraction_precision( const fraction_precision<_X>& a ) : n((_Ty)a.numerator()), d((_Ty)a.denominator()) {}

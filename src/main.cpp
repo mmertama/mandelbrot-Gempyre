@@ -7,11 +7,11 @@
 
 #include "mandelbrotdraw.h"
 
-int main(int /*argc*/, char** /*argv*/) {
+int main(int argc, char** argv) {
     Gempyre::setDebug();
 
-    Gempyre::Ui ui({{"/mandelbrot.html", Mandelbrothtml}, {"/mandelbrot.css", Mandelbrotcss}, {"/mandelbrot.png", Mandelbrotpng}},
-                 "mandelbrot.html");
+    Gempyre::Ui ui(Mandelbrot_resourceh,
+                 "mandelbrot.html", argc, argv);
     Gempyre::CanvasElement canvas(ui, "canvas");
     Gempyre::Element iterations(ui, "iterations_slider");
     Gempyre::Element colors(ui, "color_slider");

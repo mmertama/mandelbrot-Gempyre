@@ -5,7 +5,7 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2002-2019
+ *                       Copyright (c) 2002-2020
  *                       Henrik Vestermark
  *                       Denmark
  *
@@ -81,13 +81,16 @@
  * 01.33	HVE/JUL-30-2019	Added the method .toPrecision(), .toExponential() with same functionality as in Javascript
  * 02.00	HVE/SEP-13-2019 Version2. change in the class variable. Sign has been separated from Mantissa.
  * 02.01	HVE/17-Sep-2019	Further optimization of the code. 
+ * 02.02	HVE/10-Jan-2020 Corrected the extern declaration of float_precision_ctrl
+ * 02.03	HVE/12-Aug-2020	Change precision type from unsinged int to size_t to enable both 32 and 64b it target.
+ * 02.04	HVE/22-Mar-2021 Fix an negative sign issue for -0, should return 0 for the float_precision::.toFixed() method
  *
  * End of Change Record
  * --------------------------------------------------------------------------
 */
 
 /* define version string */
-static char _VF_[] = "@(#)fprecision.h 02.01 -- Copyright (C) Henrik Vestermark";
+static char _VF_[] = "@(#)fprecision.h 02.04 -- Copyright (C) Henrik Vestermark";
 
 #include <algorithm>
 #include "iprecision.h"
@@ -104,7 +107,7 @@ enum round_mode { ROUND_NEAR, ROUND_UP, ROUND_DOWN, ROUND_ZERO };
 enum table_type { _LN2, _LN10, _PI, _EXP1 };
 
 // Default precision of 20 Radix digits if not specified
-static const int PRECISION = 20;
+static const size_t PRECISION = 20;
 
 // Float_precision radix. Can be either BASE 2, BASE_10, BASE 16 or BASE_256
 static const int F_RADIX = BASE_10;
@@ -116,7 +119,7 @@ inline unsigned char FCHARACTER10( char x)		{ return (unsigned char)( x + '0'); 
 inline int FCARRY( unsigned int x )				{ return (int)( x / F_RADIX ); }
 inline int FSINGLE( unsigned int x )			{ return (int)( x % F_RADIX ); }
 
-inline double PLOG10(unsigned int x )			{ return log( x * log( (double)F_RADIX ) / log( (double)BASE_10) ) / log((double)BASE_10); }
+inline double PLOG10(size_t x )					{ return log( x * log( (double)F_RADIX ) / log( (double)BASE_10) ) / log((double)BASE_10); }
 inline unsigned int PADJUST( unsigned int x )	{ return (unsigned int)( x * ( log( (double)BASE_10 ) / log( (double)F_RADIX ) ) + 0.9 ); }
 inline unsigned int PDIGIT10(unsigned int digit){ return (unsigned int)ceil( ( digit * log( (double)F_RADIX ) ) /log( (double)BASE_10 ) ); }
 
@@ -141,20 +144,20 @@ inline int digits_to_check() { if (F_RADIX == BASE_10) return 18; if(F_RADIX == 
 //
 class float_precision_ctrl {
    enum round_mode   mRmode;  // Global Rounding mode. Default Round Nearest
-   unsigned int      mPrec;   // Global Number of decimals in mantissa. Default PRECISION.
+   size_t      mPrec;   // Global Number of decimals in mantissa. Default PRECISION.
 
    public:
       // Constructor
       float_precision_ctrl( unsigned int p=PRECISION, enum round_mode rm=ROUND_NEAR ): mRmode(rm), mPrec(p) {}
 
       // Coordinate functions
-      enum round_mode mode() const                 { return mRmode; }
-      enum round_mode mode( enum round_mode m )    { return( mRmode = m ); }
-      unsigned int precision() const               { return mPrec>0 ? mPrec : PRECISION; }
-      unsigned precision( unsigned int p )         { mPrec = p > 0 ? p : PRECISION; return mPrec; }
+      enum round_mode mode() const              { return mRmode; }
+      enum round_mode mode( enum round_mode m ) { return( mRmode = m ); }
+      size_t precision() const					{ return mPrec>0 ? mPrec : PRECISION; }
+      size_t precision( unsigned int p )        { mPrec = p > 0 ? p : PRECISION; return mPrec; }
    };
 
-extern float_precision_ctrl float_precision_ctrl;
+extern class float_precision_ctrl float_precision_ctrl;
 
 class float_precision;
 
@@ -164,27 +167,28 @@ template <class _Ty> inline float_precision operator+( const _Ty&, const float_p
 inline float_precision operator+( int_precision&, float_precision& );					// Override int_precision - other type in iprecision.h
 //inline float_precision operator+( float_precision&,int_precision&);					// Override int_precision - other type in iprecision.h
 inline float_precision operator+( const float_precision& );								// Unary
-//float_precision operator+( float_precision&, float_precision& );			// Binary. Obsolete
 
 // Arithmetic - Binary and Unary
 template <class _Ty> inline float_precision operator-(float_precision&, const _Ty&);
 template <class _Ty> inline float_precision operator-(const _Ty&, const float_precision&);
 inline float_precision operator-(int_precision&, float_precision&);						// Override int_precision - other type in iprecision.h
-//inline float_precision operator-( const float_precision&, const float_precision& );	// Binary. Obsolete
 inline float_precision operator-( const float_precision& );								// Unary
 
 // Arithmetic * Binary
 template <class _Ty> inline float_precision operator*(float_precision&, const _Ty&);
 template <class _Ty> inline float_precision operator*(const _Ty&, const float_precision&);
 inline float_precision operator*(int_precision&, float_precision&);						// Override int_precision * other type in iprecision.h
-//inline static float_precision operator*( const float_precision&, const float_precision& );  // Binary. Obsolete
 
 // Arithmetic / Binary
 template <class _Ty> inline float_precision operator/(float_precision&, const _Ty&);
 template <class _Ty> inline float_precision operator/(const _Ty&, const float_precision&);
 inline float_precision operator/(int_precision&, float_precision&);						// Override int_precision / other type in iprecision.h
-//inline float_precision operator/( const float_precision&, const float_precision& );		// Binary. Obsolete
 
+// Arithmetic % Binary
+template <class _Ty> inline float_precision operator%(float_precision&, const _Ty&);
+template <class _Ty> inline float_precision operator%(const _Ty&, const float_precision&);
+inline float_precision operator%(int_precision&, float_precision&);						// Override int_precision % other type in iprecision.h
+																						
 // Boolean Comparision Operators
 inline bool operator> ( const float_precision&, const float_precision& );
 inline bool operator< ( const float_precision&, const float_precision& );
@@ -230,19 +234,19 @@ extern float_precision nroot(const float_precision&, unsigned int);
 
 // Support functions. Works on float_precision
 float_precision _float_precision_inverse( const float_precision& );
-float_precision _float_table( enum table_type, unsigned int );
+float_precision _float_table( enum table_type, size_t );
 std::string _float_precision_ftoa( const float_precision * );
 std::string _float_precision_ftoainteger( const float_precision * );
-float_precision _float_precision_atof( const char *, unsigned int, enum round_mode );
-float_precision _float_precision_dtof( double, unsigned int, enum round_mode );
+float_precision _float_precision_atof( const char *, size_t, enum round_mode );
+float_precision _float_precision_dtof( double, size_t, enum round_mode );
 
 // Core Supporting functions. Works directly on string class
 int _float_precision_normalize( std::string * );
-int _float_precision_rounding( std::string *, int, unsigned int, enum round_mode );
+int _float_precision_rounding( std::string *, int, size_t, enum round_mode );
 void _float_precision_strip_leading_zeros( std::string * );
 void _float_precision_strip_trailing_zeros( std::string * );
-void _float_precision_right_shift( std::string *, int );
-void _float_precision_left_shift( std::string *, int );
+void _float_precision_right_shift( std::string *, size_t );
+void _float_precision_left_shift( std::string *, size_t );
 int _float_precision_compare( std::string *, std::string * );
 std::string _float_precision_uadd_short( std::string *, unsigned int );
 std::string _float_precision_uadd( std::string *, std::string * );
@@ -274,7 +278,7 @@ std::string _float_precision_urem( std::string *, std::string * );
 //
 class float_precision {
    enum round_mode   mRmode;  // Rounding mode. Default Round Nearest
-   unsigned int      mPrec;   // Number of decimals in mantissa. Default 20, We make a shot cut by assuming the number of digits can't exceed 2^32-1
+   size_t			 mPrec;   // Number of decimals in mantissa. Default 20, We make a shot cut by assuming the number of digits can't exceed 2^32-1 on 32bit or 2^64-1 on 64bit system
    int               mExpo;   // Exponent as a power of RADIX (not 2 as in IEEE 754). We make a short cut here and use a standard int to hold
                               // the exponent. This will allow us exponent in the range from -RADIX^2^31 to  RADIX^2^31. Which should be enough
    std::string       mNumber; // The mantissa any length however the fraction point is always after the first digit and is implied
@@ -289,33 +293,33 @@ class float_precision {
 												mNumber = FCHARACTER(0);            // Build number
 												mSign = +1;  
 												}
-      float_precision( char, unsigned int, enum round_mode );				// When initialized through a char
-      float_precision( unsigned char, unsigned int, enum round_mode );		// When initialized through a unsigned char
-      float_precision( short, unsigned int, enum round_mode );				// When initialized through a short
-      float_precision( unsigned short, unsigned int, enum round_mode );		// When initialized through a unsigned short
-      float_precision( int, unsigned int, enum round_mode );				// When initialized through a int
-      float_precision( unsigned int, unsigned int, enum round_mode );		// When initialized through a unsigned int
-      float_precision( long, unsigned int, enum round_mode );				// When initialized through a long
-      float_precision( unsigned long, unsigned int, enum round_mode );		// When initialized through a unsigned long
-	  float_precision( int64_t, unsigned int, enum round_mode);				// When initialized through a int64_t
-	  float_precision( uint64_t, unsigned int, enum round_mode);			// When initialized through a uint64_t
-      float_precision( double, unsigned int, enum round_mode );				// When initialized through a double
-      float_precision( const char *, unsigned int, enum round_mode );		// When initialized through a char string
-	  float_precision( const std::string&, unsigned int, enum round_mode);	// When initialized through a std::string
+      float_precision( char, size_t, enum round_mode );				// When initialized through a char
+      float_precision( unsigned char, size_t, enum round_mode );	// When initialized through a unsigned char
+      float_precision( short, size_t, enum round_mode );			// When initialized through a short
+      float_precision( unsigned short, size_t, enum round_mode );	// When initialized through a unsigned short
+      float_precision( int, size_t, enum round_mode );				// When initialized through a int
+      float_precision( unsigned int, size_t, enum round_mode );		// When initialized through a unsigned int
+      float_precision( long, size_t, enum round_mode );				// When initialized through a long
+      float_precision( unsigned long, size_t, enum round_mode );	// When initialized through a unsigned long
+	  float_precision( int64_t, size_t, enum round_mode);			// When initialized through a int64_t
+	  float_precision( uint64_t, size_t, enum round_mode);			// When initialized through a uint64_t
+      float_precision( double,size_t, enum round_mode );			// When initialized through a double
+      float_precision( const char *, size_t, enum round_mode );		// When initialized through a char string
+	  float_precision( const std::string&, size_t, enum round_mode);// When initialized through a std::string
       float_precision( const float_precision& s ): mNumber(s.mNumber), mRmode(s.mRmode), mPrec(s.mPrec), mExpo(s.mExpo), mSign(s.mSign) {}  // When initialized through another float_precision
-      float_precision( const int_precision&, unsigned int, enum round_mode );
+      float_precision( const int_precision&, size_t, enum round_mode );
 
       // Coordinate functions
-      std::string get_mantissa() const             { return mNumber.substr(); };    // Copy of mantissa
-      std::string *ref_mantissa()                  { return &mNumber; }				// Reference to Mantissa
-      enum round_mode mode() const                 { return mRmode; }
-      enum round_mode mode( enum round_mode m )    { return( mRmode = m ); }
-      int exponent() const                         { return mExpo; };
-      int exponent( int e )                        { return( mExpo = e ); }
-      int sign() const                             { return mSign; }
-	  int sign( int s )							   { return ( mSign = s ); }
-      unsigned int precision() const               { return mPrec; }
-      unsigned precision( unsigned int p )         { std::string m;
+      std::string get_mantissa() const          { return mNumber.substr(); };    // Copy of mantissa
+      std::string *ref_mantissa()               { return &mNumber; }				// Reference to Mantissa
+      enum round_mode mode() const              { return mRmode; }
+      enum round_mode mode( enum round_mode m ) { return( mRmode = m ); }
+      int exponent() const                      { return mExpo; };
+      int exponent( int e )                     { return( mExpo = e ); }
+      int sign() const                          { return mSign; }
+	  int sign( int s )							{ return ( mSign = s ); }
+      size_t precision() const					{ return mPrec; }
+      size_t precision( size_t p )				{ std::string m;
                                                    mPrec = p > 0 ? p : float_precision_ctrl.precision();
                                                    mExpo += _float_precision_rounding( &mNumber, mSign, mPrec, mRmode );
                                                    return mPrec;
@@ -354,6 +358,7 @@ class float_precision {
       float_precision& operator-=( const float_precision& );
       float_precision& operator*=( const float_precision& );
       float_precision& operator/=( const float_precision& );
+	  float_precision& operator%=( const float_precision& );
 
       // Specialization
       friend std::ostream& operator<<( std::ostream& strm, const float_precision& d );
@@ -393,7 +398,7 @@ class float_precision {
 ///   Validate and initilize with a character
 ///   Input Always in BASE_10
 //
-inline float_precision::float_precision( const char c, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( const char c, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -431,7 +436,7 @@ inline float_precision::float_precision( const char c, unsigned int p = float_pr
 ///   Validate and initilize with a character
 ///   Input Always in BASE_10
 //
-inline float_precision::float_precision( const unsigned char c, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( const unsigned char c, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -471,7 +476,7 @@ inline float_precision::float_precision( const unsigned char c, unsigned int p =
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( short i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( short i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -506,7 +511,7 @@ inline float_precision::float_precision( short i, unsigned int p = float_precisi
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( unsigned short i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( unsigned short i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -542,7 +547,7 @@ inline float_precision::float_precision( unsigned short i, unsigned int p = floa
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( int i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( int i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -578,7 +583,7 @@ inline float_precision::float_precision( int i, unsigned int p = float_precision
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( unsigned int i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( unsigned int i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -614,7 +619,7 @@ inline float_precision::float_precision( unsigned int i, unsigned int p = float_
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( long i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( long i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -650,7 +655,7 @@ inline float_precision::float_precision( long i, unsigned int p = float_precisio
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( unsigned long i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( unsigned long i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
 	{
 	std::string number;
 
@@ -685,7 +690,7 @@ inline float_precision::float_precision( unsigned long i, unsigned int p = float
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( int64_t i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
+inline float_precision::float_precision( int64_t i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
 	{
 	std::string number;
 
@@ -721,7 +726,7 @@ inline float_precision::float_precision( int64_t i, unsigned int p = float_preci
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
-inline float_precision::float_precision( uint64_t i, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
+inline float_precision::float_precision( uint64_t i, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
 	{
 	std::string number;
 
@@ -755,7 +760,7 @@ inline float_precision::float_precision( uint64_t i, unsigned int p = float_prec
 ///   Only use core base functions to create multi precision numbers
 ///   The float can be any integer or decimal float representation
 //
-inline float_precision::float_precision( const char *str, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( const char *str, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
    {
    if( str == NULL || *str == '\0' )
       { throw bad_int_syntax(); return; }
@@ -783,7 +788,7 @@ inline float_precision::float_precision( const char *str, unsigned int p = float
 ///   The float can be any integer or decimal float representation
 //
 
-inline float_precision::float_precision(const std::string& str, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
+inline float_precision::float_precision(const std::string& str, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode())
 	{
 	if ( str.empty() )
 		{
@@ -813,7 +818,7 @@ inline float_precision::float_precision(const std::string& str, unsigned int p =
 ///   Only use core base functions to create multi precision numbers
 ///   The float can be any integer or decimal float representation
 //
-inline float_precision::float_precision( double d, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( double d, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
    {
    mRmode = m;
    mPrec = p;
@@ -838,7 +843,7 @@ inline float_precision::float_precision( double d, unsigned int p = float_precis
 ///    1) conver to Ascii decimal string and then
 ///   2) convert it back to floating format
 //
-inline float_precision::float_precision( const int_precision& ip, unsigned int p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
+inline float_precision::float_precision( const int_precision& ip, size_t p = float_precision_ctrl.precision(), enum round_mode m = float_precision_ctrl.mode() )
    {
    std::string s;
 
@@ -1093,7 +1098,7 @@ inline float_precision& float_precision::operator+=( const float_precision& a )
 	{
 	int sign, sign1, sign2, wrap;
 	int expo_max, digits_max;
-	unsigned int precision_max;
+	size_t precision_max;
 	std::string s, s1, s2;
 
 	if( a.mNumber.length() == 1 && FDIGIT( a.mNumber[0] ) == 0 )  // Add zero
@@ -1280,6 +1285,33 @@ inline float_precision& float_precision::operator/=( const float_precision& a )
 		c.precision( mPrec );
 	c = a;
 	*this *= _float_precision_inverse(c);
+	return *this;
+	}
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  24-Mar-2021
+///	@brief 	%= float precision numbers
+///	@return 	the resulting float_precision number
+///	@param   "a"	-	float precsion number to assign
+///
+///	@todo
+///
+/// Description:
+///   The essential /= operator
+///   We do a %= b as fmod(a,b)
+//
+inline float_precision& float_precision::operator%=(const float_precision& a)
+	{
+	if (mNumber.length() == 1 && FDIGIT(mNumber[0]) == 0) // If divisor is zero the result is zero
+		return *this;
+
+	float_precision c;
+
+	c.precision(a.precision());
+	if (a.precision() < mPrec)
+		c.precision(mPrec);
+	c = a;
+	*this = fmod( *this, c );
 	return *this;
 	}
 
@@ -1693,12 +1725,12 @@ template <class _Ty> inline float_precision operator/(const _Ty& lhs, const floa
 ///   @date  7/29/2014
 ///   @version 1.0
 ///	@brief 			operator/
-///	@return 	float_precision	-	return addition of lhs / rhs
+///	@return 	float_precision	-	return division of lhs / rhs
 ///	@param   "lhs"	-	First operand
 ///	@param   "rhs"	-	Second operand
 ///
 /// Description:
-///   Add operator for int_precision / float_precision
+///   Div operator for int_precision / float_precision
 ///
 inline float_precision operator/(int_precision& lhs, float_precision& rhs)
 	{
@@ -1742,6 +1774,74 @@ inline float_precision operator/( const float_precision& a, const float_precisio
    return c;
    }
 */
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  23-Mar-2021
+///	@brief 			operator%
+///	@return 	float_precision	%	return addition of lhs % rhs
+///	@param   "lhs"	-	First operand
+///	@param   "rhs"	-	Second operand
+///
+///	@todo  Add to do things
+///
+/// Description:
+///   % operator for float_precision % <any other type>
+///   no const on the lhs parameter to prevent ambigous overload
+///
+template <class _Ty> inline float_precision operator%(float_precision& lhs, const _Ty& rhs)
+	{
+	float_precision c(rhs), d(lhs);
+
+	if (d.precision() < c.precision())
+		d.precision(c.precision());
+
+	return d %= c;
+	}
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  23-Mar-2021
+///	@brief 			operator%
+///	@return 	float_precision	-	return addition of lhs % rhs
+///	@param   "lhs"	-	First operand
+///	@param   "rhs"	-	Second operand
+///
+///	@todo  Add to do things
+///
+/// Description:
+///   % operator for  <any other type> % float_precision
+///   no const on the lhs parameter to prevent ambigous overload
+///
+template <class _Ty> inline float_precision operator%(const _Ty& lhs, const float_precision& rhs)
+	{
+	float_precision c(rhs), d(lhs);
+
+	if (d.precision() < c.precision())
+		d.precision(c.precision());
+
+	return d %= c;
+	}
+
+///   @author Henrik Vestermark (hve@hvks.com)
+///   @date  23-mar-2021
+///   @version 1.0
+///	@brief 			operator%
+///	@return 	float_precision	-	return modulo of lhs % rhs
+///	@param   "lhs"	-	First operand
+///	@param   "rhs"	-	Second operand
+///
+/// Description:
+///   % operator for int_precision % float_precision
+///
+inline float_precision operator%(int_precision& lhs, float_precision& rhs)
+	{
+	float_precision c(lhs);
+
+	if (rhs.precision() > c.precision())
+		c.precision(rhs.precision());
+
+	return c %= rhs;
+	}
+
 
 
 ///	@author Henrik Vestermark (hve@hvks.com)
@@ -1970,9 +2070,8 @@ inline float_precision fabs( const float_precision& a )
 inline std::string float_precision::toFixed(int fix = 0)
 	{
 	std::string ss;
-	char sign;
-	unsigned int inx;
-	int expo;
+	int sign, expo;
+	size_t inx;
 
 	if (fix < 0) fix = 0;
 	ss = this->toString();					// Now we have it in exponetial form and in Base 10 
@@ -1991,7 +2090,7 @@ inline std::string float_precision::toFixed(int fix = 0)
 	if (ss.length()<(unsigned)(inx + fix + 1))
 		ss.insert(ss.length(), inx + fix - ss.length(), '0');		// Add trailing zeros
 	if(ss.length()>inx) ss.insert( inx, 1, '.' );					// Insert fraction unless it after the last digit
-	if (sign <0 ) ss.insert(0, 1, '-');		// Add sign if negative
+	if (sign < 0 && ss != "0" ) ss.insert(0, 1, '-');		// Add sign if negative and not 0
 	return ss;								// Return formatted representation of number
 	}
 
@@ -2012,9 +2111,8 @@ inline std::string float_precision::toFixed(int fix = 0)
 inline std::string float_precision::toPrecision(int fix = 1)
 	{
 	std::string ss;
-	char sign;
-	unsigned int inx, shf;
-	int expo;
+	int sign, expo;
+	size_t inx, shf;
 
 	if (fix <= 1 ) fix = 1;
 	sign = this->mSign;
@@ -2034,7 +2132,8 @@ inline std::string float_precision::toPrecision(int fix = 1)
 			{
 			shf = ss.length() - inx;
 			if (shf > (unsigned)expo) shf = expo;
-			expo-=shf; inx+=shf;
+			expo-=(int)shf; 
+			inx+=shf;
 			}
 		}
 	else
@@ -2043,11 +2142,11 @@ inline std::string float_precision::toPrecision(int fix = 1)
 			{
 			shf = (unsigned)fix - ss.length();
 			if (shf > (unsigned)-expo) shf = -expo;
-			expo+=shf; ss.insert(0, shf, '0');
+			expo+=(int)shf; ss.insert(0, shf, '0');
 			}
 		}
 	ss = ss.substr(0, inx) + ((unsigned)fix > inx ? "." : "") + ss.substr(inx, fix);
-	if (sign <0) ss.insert(0, 1, '-');		// Add sign if negative
+	if (sign < 0 ) ss.insert(0, 1, '-');		// Add sign if negative
 	if (expo != 0) { ss += "E"; ss+=(expo < 0 ? "-" : ""); ss += itostring(abs(expo), BASE_10); }
 	return ss;
 	}
@@ -2069,9 +2168,8 @@ inline std::string float_precision::toPrecision(int fix = 1)
 inline std::string float_precision::toExponential(int fix = 0)
 	{
 	std::string ss;
-	char sign;
-	unsigned int inx;
-	int expo;
+	int sign, expo;
+	size_t inx;
 	
 	if (fix < 0) fix = 0;
 	sign = this->mSign;
@@ -2086,8 +2184,8 @@ inline std::string float_precision::toExponential(int fix = 0)
 	_float_precision_rounding(&ss, sign == '-' ? -1 : 1, fix, this->mRmode);  // Round to fix
 	if ((unsigned)fix> ss.length()) ss.insert(ss.length(), fix - ss.length(), '0');  // Trailing with zeros, so we have fix decimals
 	ss = ss.substr(0, inx) + ((unsigned)fix > inx ? "." : "") + ss.substr(inx, fix);
-	if (sign <0) ss.insert(0, 1, '-');		// Add sign if negative
-	if (expo != 0) { ss += "E"; ss += (expo < 0 ? "-" : ""); ss += itostring(abs(expo), BASE_10); }
+	if ( sign < 0 ) ss.insert(0, 1, '-');		// Add sign if negative
+	if ( expo != 0 ) { ss += "E"; ss += (expo < 0 ? "-" : ""); ss += itostring(abs(expo), BASE_10); }
 
 	return ss;
 	}

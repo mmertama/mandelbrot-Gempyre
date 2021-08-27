@@ -5,14 +5,14 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2002-2019
+ *                       Copyright (c) 2002-2021
  *                       Henrik Vestermark
  *                       Denmark
  *
  *                       All Rights Reserved
  *
  *   This source file is subject to the terms and conditions of the
- *   Future Team Software License Agreement which restricts the manner
+ *   Henrik Vestermark Software License Agreement which restricts the manner
  *   in which it may be used.
  *   Mail: hve@hvks.com
  *
@@ -52,6 +52,14 @@
  * 01.15	HVE/JUN-20-2015	Fixed and un-declare variable x when compiling with no interval hardware support
  * 01.16	HVE/Jul-07-2019	Moved Hardware support up prior to the template class definition to make the code more portable and added <iostream> header
  * 01.17    HVE/Jul-07-2019 Make the code more portable to a GCC environment
+ * 01.18	HVE/24-Mar-2021 Updated license info
+ * 01.19	HVE/4-Jul-2021	Added software interval runding via towsum and twoproduct functions and other functions
+ * 01.20	HVE/5-Jul-2021	Replace deprecreated headers with current headers
+ * 01.21	HVE/15-Jul-2021 Decpreated hardware support for interval arithmetic since this was not portable and didnt takes advantages of the latest 
+ *							Intel instructions set. instead if used only software emaulation of intervals.
+ * 01.22	HVE/29-Jul-2021 Corrected bugs in all the trigonometir functions and added interval version of hyperbolic functions
+ *							sinh(), cosh(), tanh(), asinh(), acosh(), atanh().
+ * 01.23	HVE/30-Jul-2021 Added intervalsection(), unionsection(), boolean precedes(), interior()
  *
  * End of Change Record
  * --------------------------------------------------------------------------
@@ -59,62 +67,12 @@
 
 
 /* define version string */
-static char _VinterP_[] = "@(#)intervalprecision.h 01.17 -- Copyright (C) Henrik Vestermark";
+static char _VinterP_[] = "@(#)intervalprecision.h 01.23 -- Copyright (C) Henrik Vestermark";
 
-#include <float.h>
+#include <cfloat>
+#include <cmath>
 #include <algorithm>
 #include <iostream>
-
-// HARDWARE_SUPPORT controlled if IEEE754 floating point control can be used for interval arithmetic.
-// if not used interval arithmetic will be handle in software
-//#define HARDWARE_SUPPORT
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//
-//	Floating point control for the IEEE754 hardware. Only fo non managed application
-//	Enable by defined #define HARDWARE_SUPPORT
-//
-//
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#ifdef HARDWARE_SUPPORT
-inline void fpnear()
-{
-	unsigned int f87_cw, sse2_cw;
-	int cc;
-	//_controlfp_s( &currentControl, _RC_NEAR, _MCW_RC);
-	cc = __control87_2(_RC_NEAR, _MCW_RC, &f87_cw, &sse2_cw);
-}
-
-inline void fpdown()
-{
-	unsigned int f87_cw, sse2_cw;
-	int cc;
-	//_controlfp_s( &currentControl, _RC_DOWN, _MCW_RC);
-	cc = __control87_2(_RC_DOWN, _MCW_RC, &f87_cw, &sse2_cw);
-}
-
-inline void fpup()
-{
-	unsigned int f87_cw, sse2_cw;
-	int cc;
-	//_controlfp_s( &currentControl, _RC_UP, _MCW_RC);
-	cc = __control87_2(_RC_UP, _MCW_RC, &f87_cw, &sse2_cw);
-}
-#else
-inline void fpnear() {}
-inline void fpdown() {}
-inline void fpup() {}
-#endif
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//
-//   End Floating point control for the IEEE754 hardware
-//
-//
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 /// The four different interval classification
@@ -146,7 +104,8 @@ template<class _IT> class interval {
 	 template <class _X> interval(const _X& x) { low = _IT(x); high = _IT(x); }
 
       // constructor for any other type to _IT. Both up and down conversion possible
-      template<class X> interval( const interval<X>& a ) /*: low(_IT(a.lower())), high( _IT(a.upper())) */
+      template<class X> interval( const interval<X>& a ) : low((_IT)a.lower()), high((_IT)a.upper()) 
+	  /*: low(_IT(a.lower())), high( _IT(a.upper())) */
 	  {
 		/*  int is = sizeof(_IT), js = sizeof(X);
 		  cout << "_IT=" << typeid(_IT).name() << " X=" << typeid(X).name() << endl;
@@ -159,9 +118,12 @@ template<class _IT> class interval {
 			  u += u * 0.5f * FLT_EPSILON;interval<float_precision>(ip1.lower(),ip1.upper())
 			 // high = _IT(u);
 			  }
-			  */
-		  if (a.lower() < a.upper()) { fpdown();  low = _IT(a.lower()); fpup();  high = _IT(a.upper()); fpnear();  }
-		  else { fpdown();  low = _IT(a.upper()); fpup();  high = _IT(a.lower()); fpnear(); }
+		
+		  if (a.lower() < a.upper()) 
+			{ low = _IT(a.lower());
+			high = _IT(a.upper()); }
+		  else { low = _IT(a.upper()); high = _IT(a.lower()); }
+		  */
 	  }
 
       // Coordinate functions
@@ -186,6 +148,7 @@ template<class _IT> class interval {
 										if (low < _IT(0) && high > _IT(0)) return MIXED;
 										return NO_CLASS;
 										}
+	  
 	  // Conversion methods. Safer and less ambiguios than overloading implicit/explivit conversion operators
 //	  std::string toString() const					{ return _float_precision_ftoa(this); }
 	//  int_precision to_int_precision() const		{ std::string s = _float_precision_ftoainteger(this); return (int_precision)((char *)s.c_str()); }
@@ -270,16 +233,17 @@ template<class _IT> bool operator!=(const interval<_IT>&, const interval<_IT>&);
 
 // Other functions
 template<class _IT> interval<_IT> abs(const interval<_IT>&);
+template<class _IT> interval<_IT> intersection(const interval<_IT>&, const interval<_IT>&);
+template<class _IT> interval<_IT> unionsection(const interval<_IT>&, const interval<_IT>&);
+template<class _IT> bool interior(const interval<_IT>&, const interval<_IT>&);
+template<class _IT> bool precedes(const interval<_IT>&, const interval<_IT>&);
 
 // Manifest Constants like PI, LN2 and LN10
 inline interval<float> int_pifloat();
-inline interval<double> int_pidouble();
 inline interval<float_precision> int_pi(const unsigned int);
 inline interval<float> int_ln2float();
-inline interval<double> int_ln2double();
 inline interval<float_precision> int_ln2(const unsigned int);
 inline interval<float> int_ln10float();
-inline interval<double> int_ln10double();
 inline interval<float_precision> int_ln10(const unsigned int);
 
 // Elementary functions
@@ -329,10 +293,58 @@ inline interval<double> atan(const interval<double>&);
 inline interval<float_precision> atan(const interval<float_precision>&);
 
 // Hyperbolic functions
-//  Not yet implemented
+inline interval<float> sinh(const interval<float>&);
+inline interval<double> sinh(const interval<double>&);
+inline interval<float_precision> sinh(const interval<float_precision>&);
 
+inline interval<float> cosh(const interval<float>&);
+inline interval<double> cosh(const interval<double>&);
+inline interval<float_precision> cosh(const interval<float_precision>&);
 
+inline interval<float> tanh(const interval<float>&);
+inline interval<double> tanh(const interval<double>&);
+inline interval<float_precision> tanh(const interval<float_precision>&);
 
+inline interval<float> asinh(const interval<float>&);
+inline interval<double> asinh(const interval<double>&);
+inline interval<float_precision> asinh(const interval<float_precision>&);
+
+inline interval<float> acosh(const interval<float>&);
+inline interval<double> acosh(const interval<double>&);
+inline interval<float_precision> acosh(const interval<float_precision>&);
+
+inline interval<float> atanh(const interval<float>&);
+inline interval<double> atanh(const interval<double>&);
+inline interval<float_precision> atanh(const interval<float_precision>&);
+
+// Low level support functions
+inline float tofloat(const double &, const enum round_mode );
+inline double add_down(const double &, const double &);
+inline double add_up(const double &, const double &);
+inline double sub_down(const double &, const double &);
+inline double sub_up(const double &, const double &);
+inline double mul_down(const double &, const double &);
+inline double mul_up(const double &, const double &);
+inline double div_down(const double &, const double &);
+inline double div_up(const double &, const double &);
+inline double sqrt_down(const double &);
+inline double sqrt_up(const double &);
+
+//////////////////////////////////////////////////////////////////////////////////////
+///
+/// Interval constants like PI, LN2 and LN10, E
+///
+//////////////////////////////////////////////////////////////////////////////////////
+
+// Load manifest constant PI, LN, LN10, E, SQRT2
+//
+static const interval<double> PI(3.1415926535897931, 3.1415926535897936);
+static const interval<double> LN2(0.69314718055994529, 0.69314718055994540);
+static const interval<double> LN10(2.3025850929940455, 2.3025850929940459);
+static const interval<double> E(2.7182818284590451, 2.7182818284590455);
+static const interval<double> SQRT2(1.4142135623730947, 1.4142135623730951);
+
+//
 // Output Operator <<
 //
 template<class _Ty> inline std::ostream& operator<<( std::ostream& strm, interval<_Ty>& a ) { return strm << "[" << a.lower() << "," << a.upper() << "]"; }
@@ -398,7 +410,6 @@ template<class _IT> inline interval<_IT>& interval<_IT>::operator+=( const inter
    low += a.lower();
    high.mode( ROUND_UP );
    high += a.upper();
-
    return *this;
    }
 
@@ -406,23 +417,12 @@ template<class _IT> inline interval<_IT>& interval<_IT>::operator+=( const inter
 // Specialization for float and +=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we use software emulation to do the interval arithmetic in software
 //
 template<> inline interval<float>& interval<float>::operator+=( const interval<float>& a )
 	{
-#ifdef HARDWARE_SUPPORT
-	fpdown();
-	low += a.lower();
-	fpup();
-	high += a.upper();
-	fpnear();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs += lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
+	low = tofloat(add_down(low, a.lower()), ROUND_DOWN );
+	high = tofloat(add_up(high, a.upper()), ROUND_UP );
 	return *this;
 	}
 
@@ -433,19 +433,8 @@ template<> inline interval<float>& interval<float>::operator+=( const interval<f
 //
 template<> inline interval<double>& interval<double>::operator+=( const interval<double>& a )
 	{
-#ifdef HARDWARE_SUPPORT
-	fpdown();
-	low += a.lower();
-	fpup();
-	high += a.upper();
-	fpnear();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs += lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
+	low = add_down(low, a.lower());
+	high = add_up(high, a.upper());
 	return *this;
 	}
 
@@ -468,7 +457,6 @@ template<> inline interval<float_precision>& interval<float_precision>::operator
    low -= a.upper();
    high.mode( ROUND_UP );
    high -= a.lower();
-
    return *this;
    }
 
@@ -479,42 +467,22 @@ template<> inline interval<float_precision>& interval<float_precision>::operator
 //
 template<> inline interval<float>& interval<float>::operator-=( const interval<float>& a )
 	{
-#ifdef HARDWARE_SUPPORT
-	fpdown();
-	low -= a.high;
-	fpup();
-	high -= a.low;
-	fpnear();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs -= lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
+	interval<float> b(-a.upper(), -a.lower());
+	low = tofloat(add_down(low, b.lower()), ROUND_DOWN);
+	high = tofloat(add_up(high, b.upper()), ROUND_UP);
 	return *this;
 	}
 
 // Specialization for double and -=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we do software emaultion to do the interval arithmetic in software
 //
 template<> inline interval<double>& interval<double>::operator-=( const interval<double>& a )
 	{
-#ifdef HARDWARE_SUPPORT
-	fpdown();
-	low -= a.high;
-	fpup();
-	high -= a.low;
-	fpnear();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs -= lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
+	interval<double> b(-a.upper(), -a.lower());
+	low = add_down(low, b.lower());
+	high = add_up(high, b.upper());
 	return *this;
 	}
 
@@ -649,9 +617,13 @@ template<> inline interval<float_precision>& interval<float_precision>::operator
             if( a.upper().sign() > 0 )
                {  //  a.low < 0, a.high >= 0
                t.mode( ROUND_DOWN );
-               l = low;  l *= a.upper(); if( l > ( t = high, t *= a.lower() ) ) l = t;
+               l = low;  l *= a.upper(); 
+			   if( l > ( t = high, t *= a.lower() ) ) 
+				   l = t;
                t.mode( ROUND_UP );
-               h = high; h *= a.upper(); if( h < ( t = low, t *= a.lower() ) ) h = t;
+               h = high; h *= a.upper(); 
+			   if( h < ( t = low, t *= a.lower() ) ) 
+				   h = t;
                }
             else
                { // a.low and a.high < 0
@@ -681,207 +653,164 @@ template<> inline interval<float_precision>& interval<float_precision>::operator
 
    low = l;
    high = h;
-
    return *this;
    }
 
 // Specilization for float and *=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we do software emulation to do the interval arithmetic in software
 //
 template<> inline interval<float>& interval<float>::operator*=( const interval<float>& a )
-   {
-#ifdef HARDWARE_SUPPORT
+	{
 	float l, h, t;
 
-	if (low >= 0 ) //
-	{ // both low and high >= 0
-		if (a.lower() >= 0 )
-		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.lower();
-			fpup();
-			h = high * a.upper();
-		}
+	if (low >= 0) //
+		{ // both low and high >= 0
+		if (a.lower() >= 0)
+			{ // a.low >=0, a.high >= 0
+			l = tofloat(mul_down(low, a.lower()), ROUND_DOWN );
+			h = tofloat(mul_up(high, a.upper()), ROUND_UP );
+			}
 		else
-		if (a.upper() >= 0 )
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = high * a.upper();
+			if (a.upper() >= 0)
+				{  //  a.low < 0, a.high >= 0
+				l = tofloat(mul_down(high, a.lower()), ROUND_DOWN );
+				h = tofloat(mul_up(high, a.upper()), ROUND_UP );
+			}
+			else
+				{ // a.low and a.high < 0
+				l = tofloat(mul_down(high, a.lower()), ROUND_DOWN );
+				h = tofloat(mul_up(low, a.upper()), ROUND_UP );
+				}
 		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = low * a.upper();
-		}
-	}
 	else
-	if (high >= 0 )
-	{  // low < 0, high >= 0
-		if (a.lower() >= 0 )
-		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = high * a.upper();
-		}
+		if (high >= 0)
+			{  // low < 0, high >= 0
+			if (a.lower() >= 0)
+				{ // a.low >=0, a.high >= 0
+				l = tofloat(mul_down(low, a.upper()), ROUND_DOWN );
+				h = tofloat(mul_up(high, a.upper()), ROUND_UP );
+				}
+			else
+				if (a.upper() >= 0)
+					{  //  a.low < 0, a.high >= 0
+					l = tofloat(mul_down(low, a.upper()), ROUND_DOWN );
+					t = tofloat(mul_down(high, a.lower()), ROUND_DOWN);
+					if (l > t) 
+						l = t;
+					h = tofloat(mul_up(high, a.upper()), ROUND_UP ); 
+					t = tofloat(mul_up(low, a.lower()), ROUND_UP);
+					if (h < t )
+						h = t;
+				}
+				else
+					{ // a.low and a.high < 0
+					l = tofloat(mul_down(high, a.lower()), ROUND_DOWN );
+					h = tofloat(mul_up(low, a.lower()), ROUND_UP );
+					}
+			}
 		else
-		if (a.upper() >= 0 )
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = low * a.upper(); if (l > (t = high * a.lower())) l = t;
-			fpup();
-			h = high * a.upper(); if (h < (t = low * a.lower())) h = t;
-		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = low * a.lower();
-		}
-	}
-	else
-	{ // low and high are < 0
-		if (a.lower() >= 0 )
-		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = high * a.lower();
-		}
-		else
-		if (a.upper() >= 0 )
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = low * a.lower();
-		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.upper();
-			fpup();
-			h = low * a.lower();
-		}
-	}
+			{ // low and high are < 0
+			if (a.lower() >= 0)
+				{ // a.low >=0, a.high >= 0
+				l = tofloat(mul_down(low, a.upper()), ROUND_DOWN );
+				h = tofloat(mul_up(high, a.lower()), ROUND_DOWN );
+				}
+			else
+				if (a.upper() >= 0)
+					{  //  a.low < 0, a.high >= 0
+					l = tofloat(mul_down(low, a.upper()), ROUND_DOWN);
+					h = tofloat(mul_up(low, a.lower()), ROUND_UP );
+					}
+				else
+					{ // a.low and a.high < 0
+					l = tofloat(mul_down(high, a.upper()), ROUND_DOWN );
+					h = tofloat(mul_up(low, a.lower()), ROUND_UP );
+					}
+			}
 
 	low = l;
 	high = h;
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs *= lhs;
-
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
-   return *this;
-   }
+	return *this;
+	}
 
 // Specilization for double and *=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we do software emulation to do the interval arithmetic in software
 //
 template<> inline interval<double>& interval<double>::operator*=( const interval<double>& a )
 	{
-#ifdef HARDWARE_SUPPORT
 	double l, h, t;
 
 	if (low >= 0) //
 	{ // both low and high >= 0
 		if (a.lower() >= 0)
 		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.lower();
-			fpup();
-			h = high * a.upper();
+			l = mul_down(low, a.lower());
+			h = mul_up(high, a.upper());
 		}
 		else
-		if (a.upper() >= 0)
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = high * a.upper();
-		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = low * a.upper();
-		}
+			if (a.upper() >= 0)
+			{  //  a.low < 0, a.high >= 0
+				l = mul_down(high, a.lower());
+				h = mul_up(high, a.upper());
+			}
+			else
+			{ // a.low and a.high < 0
+				l = mul_down(high, a.lower());
+				h = mul_up(low, a.upper());
+			}
 	}
 	else
-	if (high >= 0)
-	{  // low < 0, high >= 0
-		if (a.lower() >= 0)
-		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = high * a.upper();
+		if (high >= 0)
+		{  // low < 0, high >= 0
+			if (a.lower() >= 0)
+			{ // a.low >=0, a.high >= 0
+				l = mul_down(low, a.upper());
+				h = mul_up(high, a.upper());
+			}
+			else
+				if (a.upper() >= 0)
+				{  //  a.low < 0, a.high >= 0
+					l = mul_down(low, a.upper());
+					t = mul_down(high, a.lower());
+					if (l > t)
+						l = t;
+					h = mul_up(high, a.upper());
+					t = mul_up(low, a.lower());
+					if (h < t)
+						h = t;
+				}
+				else
+				{ // a.low and a.high < 0
+					l = mul_down(high, a.lower());
+					h = mul_up(low, a.lower());
+				}
 		}
 		else
-		if (a.upper() >= 0)
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = low * a.upper(); if (l > (t = high * a.lower())) l = t;
-			fpup();
-			h = high * a.upper(); if (h < (t = low * a.lower())) h = t;
+		{ // low and high are < 0
+			if (a.lower() >= 0)
+			{ // a.low >=0, a.high >= 0
+				l = mul_down(low, a.upper());
+				h = mul_up(high, a.lower());
+			}
+			else
+				if (a.upper() >= 0)
+				{  //  a.low < 0, a.high >= 0
+					l = mul_down(low, a.upper());
+					h = mul_up(low, a.lower());
+				}
+				else
+				{ // a.low and a.high < 0
+					l = mul_down(high, a.upper());
+					h = mul_up(low, a.lower());
+				}
 		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.lower();
-			fpup();
-			h = low * a.lower();
-		}
-	}
-	else
-	{ // low and high are < 0
-		if (a.lower() >= 0)
-		{ // a.low >=0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = high * a.lower();
-		}
-		else
-		if (a.upper() >= 0)
-		{  //  a.low < 0, a.high >= 0
-			fpdown();
-			l = low * a.upper();
-			fpup();
-			h = low * a.lower();
-		}
-		else
-		{ // a.low and a.high < 0
-			fpdown();
-			l = high * a.upper();
-			fpup();
-			h = low * a.lower();
-		}
-	}
 
 	low = l;
 	high = h;
-	fpnear();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs *= lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
 	return *this;
 	}
 
@@ -932,63 +861,38 @@ template<> inline interval<float_precision>& interval<float_precision>::operator
 // Specilization for float and /=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we software emulation to do the interval arithmetic in software
 //
 template<> inline interval<float>& interval<float>::operator/=( const interval<float>& a )
-   {
-#ifdef HARDWARE_SUPPORT
+	{
 	interval<float> b, c;
 
-	fpdown();
-	c.low = (float)1 / a.upper();
-	fpup();
-	c.high = (float)1 / a.lower();
-	fpnear();
-
+	c.low = tofloat(div_down(1, a.upper()), ROUND_DOWN );
+	c.high = tofloat(div_up(1, a.lower()), ROUND_UP );
 	b = interval(low, high);
 	c *= b;
 
 	low = c.lower();
 	high = c.upper();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs /= lhs;
-
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
-   return *this;
-   }
+	return *this;
+	}
 
 // Specilization for double and /=
 // That can work with both managed an unmanaged application.
 // HARDWARE_SUPPORT indicate if we use the build in ROUND_DOWN or ROUND_UP Mode when performing the operation
-// For now Hardware support we covert to float_precision to do the interval arithmetic in software
+// For now Hardware support we do software emulation to do the interval arithmetic in software
 //
 template<> inline interval<double>& interval<double>::operator/=( const interval<double>& a )
 	{
-#ifdef HARDWARE_SUPPORT
 	interval<double> b, c;
 
-	fpdown();
-	c.low = (double)1 / a.upper();
-	fpup();
-	c.high = (double)1 / a.lower();
-	fpnear();
-
+	c.low = div_down(1, a.upper());
+	c.high = div_up(1, a.lower());
 	b = interval(low, high);
 	c *= b;
 
 	low = c.lower();
 	high = c.upper();
-#else
-	interval<float_precision> rhs(*this), lhs(a);
-
-	rhs /= lhs;
-	low=rhs.lower();
-	high=rhs.upper();
-#endif
 	return *this;
 	}
 
@@ -1423,7 +1327,7 @@ template<class _IT> inline bool operator!=(const interval<_IT>& a, const interva
 
 //////////////////////////////////////////////////////////////////////////////////////
 ///
-/// Interval abs()
+/// Interval abs(), interior, precedes, intersection, unionsection
 ///
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -1438,6 +1342,41 @@ template<class _IT> inline interval<_IT> abs( const interval<_IT>& a )
 	return interval<_IT>(_IT(0), ( a.upper() > -a.lower() ? a.upper() : -a.lower() ) );
 	}
 
+// True if interval a is fully within interval b (interior of b) otherwise false
+template<class _IT> inline bool interior(const interval<_IT>& a, const interval<_IT>& b )
+	{
+	if (b.lower() < a.lower() && a.upper() < b.upper())
+		return true;
+	else
+		return false;
+	}
+
+// true if interval a precedes interval b otherwise false
+template<class _IT> inline bool precedes(const interval<_IT>& a, const interval<_IT>& b)
+	{
+	if (a.upper() < b.lower() )
+		return true;
+	else
+		return false;
+	}
+
+// Return Intersection of a & b
+template<class _IT> inline interval<_IT> intersection(const interval<_IT>& a, const interval<_IT>& b)
+	{
+	_IT l, u;
+	l = std::max(a.lower(), b.lower());
+	u = std::min(a.upper(), b.upper());
+	return interval<_IT>(l,u);
+	}
+
+// Return Union of a & b
+template<class _IT> inline interval<_IT> unionsection(const interval<_IT>& a, const interval<_IT>& b)
+	{
+	_IT l, u;
+	l = std::min(a.lower(), b.lower());
+	u = std::max(a.upper(), b.upper());
+	return interval<_IT>(l, u);
+	}
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 /// END interval functions
@@ -1471,6 +1410,23 @@ inline float tofloat(const interval<float_precision>& fp, enum round_mode rm )
 		}
 	return f;
 }
+/*
+inline float tofloat(const interval<double>& fp, enum round_mode rm)
+	{
+	float f;
+	double d;
+	if (rm == ROUND_DOWN) // Conversion to float introduce an error since it is always round to nearest and it should be round up or round_down
+		f = d = fp.lower();
+	else
+		f = d = fp.upper();
+
+	if (f != 0)
+		{
+		if (f != d && rm == ROUND_UP)
+			f= nextafterf(f,1.0);
+		}
+	return f;
+	}*/
 
 // Support function for correctly converting and float_precision number back to a float
 // By default IEE754 round to nearest and that will create incorrect result for interval arithmetic
@@ -1494,217 +1450,86 @@ inline double todouble(const interval<float_precision>& fp, enum round_mode rm)
 	return d;
 }
 
-#ifdef HARDWARE_SUPPORT
-// Support function for correctly converting and double number back to a float
-// By default IEE754 round to nearest and that will create incorrect result for interval arithmetic
-//
-inline float tofloat(const interval<double>& di, enum round_mode rm )
-	{
-	float fres;
-	double d;
 
-	switch (rm)
+static interval<double> _intervalexpdouble(const double x)
+	{
+	int i, k, sign = 1;
+	double xn = x;
+	const interval<double> c1(1), c2(2);
+	interval<double> isum, ix, ixp, ifac, idelta;
+	if (xn<0) { xn = -xn; sign = -1; }
+	// Argument reduction
+	for (k = 0; false && xn > 0.5&& k <= 16; ++k) xn *= 0.5;
+	ix = interval<double>(xn); ixp = c1; isum = c1; ifac = interval<double>(1);
+	for (i = 1;; ++i)
 		{
-		case ROUND_DOWN: d = di.lower(); fpdown();  break;
-		case ROUND_UP: d = di.upper();  fpup();  break;
+		ifac *= interval<double>(i);
+		ixp *= ix;
+		idelta = ixp /interval<double>(ifac);
+		if (isum.center() + idelta.center() == isum.center()) 
+			break;
+		isum += idelta;
+		}
+	// Reverse reduction
+	// Brent enhancement avoid loss of significant digits when x is small.
+	if (k>0)
+		{
+		isum -= c1;
+		for (; k > 0; k--)
+			isum = (c2 + isum)*isum;
+		isum += c1;
 		}
 
-	fres = (float)d;
-	fpnear();
-	return fres;
+	//for (; k>0; --k) 
+	//	isum *= isum;
+	if (sign<0) 
+		isum = c1 / isum;
+	return isum;
 	}
 
-// Support function for correctly converting and double number back to a float
-// By default IEE754 round to nearest and that will create incorrect result for interval arithmetic
-//
-inline float tofloat(const double& d, enum round_mode rm)
+
+static interval<double> _intervallogdouble(const double x)
 	{
-	float fres;
-
-	switch (rm)
+	int i, k, expo = 0;
+	interval<double> zn, zsq, sum, delta;
+	double xd;
+	if (x<0) { throw interval<double>::domain_error(); }
+	if (x == 0) { return interval<double>(-std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()); }
+	if (x == 1) { return interval<double>(0); }
+	// Remove the exponent
+	expo = (int)trunc(log10(x)); 
+	xd = x / pow(10,expo);
+	zn = interval<double>(xd);
+	// Taylor series of log(x)
+	// log(x)=2( z + z^3/3 + z^5/5 ...)
+	// where z=(x-1)/(x+1) 
+	// Argument reduction
+	// In order to get a fast Taylor series result we need to get the fraction closer to 1
+	// The fraction part is [1.xxx-9.999] (base 10) 
+	// Repeat a series of square root until z < 1.1 
+	for (k = 0; false && zn.center()>1.1; ++k) 
+		zn = sqrt(zn);
+	// Initialize the iteration
+	zn = (zn-interval<double>(1))/ (zn+interval<double>(1));
+	zsq = zn * zn; 
+	sum = zn;
+	// Iterate using taylor series log(x) == 2( z + z^3/3 + z^5/5 ... ) 
+	for (i = 3;; i += 2)
 		{
-		case ROUND_DOWN:  fpdown();  break;
-		case ROUND_UP: fpup();  break;
+		zn *= zsq;
+		delta = zn/interval<double>(i);
+		if (sum.center() + delta.center() == sum.center())
+			break;
+		sum += delta;
 		}
-
-	fres = (float)d;
-	fpnear();
-	return fres;
+	sum *= interval<double>(pow(2,(k + 1)));
+	// Handle expo adjustment
+	if (expo != 0)
+		{
+		sum += interval<double>(expo)*interval<double>(log(10));
+		}
+	return sum;
 	}
-
-// If H/W Support allows us to control the rounding mode then we can do it directly.
-// Log(2) for double
-inline double ln2double(enum round_mode rm)
-	{
-	double res;
-
-	switch (rm)
-		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
-		}
-
-	_asm
-		{
-		fldln2;				 Load ln2
-		fstp qword ptr[res]; Store result in res
-		}
-	fpnear();
-
-	return res;
-	}
-
-// Log(10) for double
-inline double ln10double(enum round_mode rm)
-	{
-	double res;
-
-	switch (rm)
-		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
-		}
-
-	_asm
-		{
-		; ln10 = FLDL2T * FLDLN2
-		fldl2t;                 Load log2(10)
-		fldln2;					Load LN2
-		fmulp st(1),st;			Calculate LN2 * lOG2(10)
-		fstp qword ptr[res];	Store ln10 in result
-		}
-	fpnear();
-
-	return res;
-	}
-
-// PI for double
-inline double pidouble(enum round_mode rm)
-	{
-	double res;
-
-	switch (rm)
-		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
-		}
-
-	_asm
-		{
-		fldpi;				 Load PI
-		fstp qword ptr[res]; Store result in lower
-		}
-	fpnear();
-
-	return res;
-	}
-
-// Sqrt() for double
-inline double sqrtdouble( double d, enum round_mode rm )
-	{
-	double sq = d;
-
-	switch( rm )
-	{
-	case ROUND_DOWN: fpdown(); break;
-	case ROUND_UP: fpup(); break;
-	}
-
-	_asm
-		{
-		fld qword ptr[sq];  Load lower into floating point stack
-		fsqrt;                 Calculate sqrt
-		fstp qword ptr[sq]; Store result in lower
-		}
-	fpnear();
-
-	return sq;
-	}
-
-// Sqrt() for float
-inline float sqrtfloat(float f, enum round_mode rm)
-	{
-	double sq = f;
-	float fres;
-
-	sq = sqrtdouble(sq, rm);
-	fres = tofloat(sq, rm);
-	return fres;
-	}
-
-// log() for double
-inline double logdouble(double d, enum round_mode rm)
-	{
-	double lg = d;
-
-	switch (rm)
-		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
-		}
-
-	_asm
-		{
-		fld qword ptr[lg];      Load lower into floating point stack
-		fldln2;                 Load loge2
-		fxch st(1);             Exchange stack top
-		fyl2x;                  Calculate y * ln2 x
-		fstp qword ptr[lg];     Store result in lower
-		}
-
-	fpnear();
-
-	return lg;
-	}
-
-// log() for float
-inline float logfloat(float f, enum round_mode rm)
-	{
-	double lg = (double)f;
-	float fres;
-
-	lg = logdouble( lg, rm );
-	fres = tofloat(lg, rm);
-	return fres;
-	}
-
-// log10() for double
-inline double log10double(double d, enum round_mode rm)
-	{
-	double lg = d;
-
-	switch (rm)
-		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
-		}
-
-	_asm
-		{
-		fld qword ptr[lg];      Load lower into floating point stack
-		fldlg2;                 Load log10(2)
-		fxch st(1);             Exchange stack top
-		fyl2x;                  Calculate y * ln2 x
-		fstp qword ptr[lg];     Store result in lower
-		}
-
-	fpnear();
-
-	return lg;
-	}
-
-// log10 for float
-inline float log10float(float f, enum round_mode rm)
-	{
-	double lg = (double)f;
-	float fres;
-
-	lg = log10double( lg, rm );
-	fres = tofloat(lg, rm);
-	return fres;
-	}
-
-#endif
 
 // Specilization for sqrt(float_precision)
 //
@@ -1728,16 +1553,8 @@ inline interval<float_precision> sqrt( const interval<float_precision>& x )
 inline interval<float> sqrt( const interval<float>& x )
    {
    float lower, upper;
-#ifdef HARDWARE_SUPPORT
-   lower = sqrtfloat( x.lower(), ROUND_DOWN );
-   upper = sqrtfloat( x.upper(), ROUND_UP );
-#else
-   interval<float_precision> fx(x);
-
-   fx=sqrt(fx);
-   lower = tofloat( fx, ROUND_DOWN );
-   upper = tofloat( fx, ROUND_UP );
-#endif
+   lower = tofloat(sqrt_down(x.lower()), ROUND_DOWN );
+   upper = tofloat(sqrt_up(x.upper()), ROUND_UP );
    return interval<float>( lower, upper );
    }
 
@@ -1746,16 +1563,8 @@ inline interval<float> sqrt( const interval<float>& x )
 inline interval<double> sqrt( const interval<double>& x )
    {
    double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = sqrtdouble( x.lower(), ROUND_DOWN );
-	upper = sqrtdouble( x.upper(), ROUND_UP );
-#else
-	interval<float_precision> fx(x);
-
-   fx=sqrt(fx);
-   lower = todouble(fx, ROUND_DOWN);
-   upper = todouble(fx, ROUND_UP);
- #endif
+   lower = sqrt_down(x.lower());
+   upper = sqrt_up(x.upper());
    return interval<double>( lower, upper );
    }
 
@@ -1783,36 +1592,20 @@ inline interval<float_precision> log( const interval<float_precision>& x )
 inline interval<float> log( const interval<float>& x )
 	{
 	float lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = logfloat( x.lower(), ROUND_DOWN);
-	upper = logfloat( x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx=log(fx);
-	lower = tofloat( fx, ROUND_DOWN );
-	upper = tofloat( fx, ROUND_UP );
-#endif
-   return interval<float>( lower, upper );
-   }
+	lower = tofloat(_intervallogdouble(x.lower()).lower(), ROUND_DOWN);
+	upper = tofloat(_intervallogdouble(x.upper()).upper(), ROUND_UP );
+	return interval<float>( lower, upper );
+	}
 
 // log for double using managed code.
 //
 inline interval<double> log( const interval<double>& x )
 	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = logdouble( x.lower(), ROUND_DOWN);
-	upper = logdouble( x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx=log(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
-   return interval<double>( lower, upper );
-   }
+	lower = _intervallogdouble(x.lower()).lower();
+	upper = _intervallogdouble(x.upper()).upper();
+	return interval<double>( lower, upper );
+	}
 
 
 
@@ -1840,36 +1633,30 @@ inline interval<float_precision> log10( const interval<float_precision>& x )
 inline interval<float> log10( const interval<float>& x )
    {
    float lower, upper;
-#ifdef HARDWARE_SUPPORT
-   lower = log10float( x.lower(), ROUND_DOWN);
-   upper = log10float(x.upper(), ROUND_UP);
-#else
-   interval<float_precision> fx(x);
-
-   fx=log10(fx);
-   lower = tofloat( fx, ROUND_DOWN );
-   upper = tofloat( fx, ROUND_UP );
-#endif
+   interval<float> tmp;
+   lower = tofloat(_intervallogdouble(x.lower()).lower(), ROUND_DOWN );
+   upper = tofloat(_intervallogdouble(x.upper()).upper(), ROUND_UP );
+   tmp = LN10;
+   tmp = interval<float>(lower, upper)/tmp;
+   lower = tmp.lower();
+   upper = tmp.upper();
    return interval<float>( lower, upper );
    }
 
 // log10 for double using managed code.
 //
 inline interval<double> log10( const interval<double>& x )
-   {
+	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-lower = log10double( x.lower(), ROUND_DOWN);
-upper = log10double( x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx=log10(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
-   return interval<double>( lower, upper );
-   }
+	interval<double> tmp;
+	lower = _intervallogdouble(x.lower()).lower();
+	upper = _intervallogdouble(x.upper()).upper();
+	tmp = LN10;
+	tmp = interval<double>(lower, upper)/tmp;
+	lower = tmp.lower();
+	upper = tmp.upper();
+	return interval<double>( lower, upper );
+	}
 
 
 // Specilization for exp float_precision
@@ -1932,56 +1719,10 @@ inline interval<double> exp2( const interval<double>& x )
 //
 inline interval<double> exp(const interval<double>& x)
 	{
-#ifdef HARDWARE_SUPPORT
-	int  i, k = 0;
-	interval<double> c, res, p0, old;
-	const interval<double> c1(1), c2(2);
-
-	c = x;
-	if (x.is_class() == NEGATIVE)
-		c = abs(c);
-
-	// Determine Reduction factor
-	k = int((log(2) + log(abs(c.center()))) / log(2));
-	k = std::min(k, 10);
-	if (k > 0)
-		{
-		i = 2 << (k - 1);
-		c /= interval<double>( (double)i );
-		}
-
-	p0 = c;
-	old = c1;
-	res = old + p0;
-	for (i = 2; i < 100 && (res.lower() != old.lower() && res.upper() != old.upper()); i++)
-		{
-		old = res;
-		p0 *= ( c / interval<double>((double)i));
-		res += p0;
-		}
-
-	// Brent enhancement avoid loss of significant digits when x is small.
-	if (k>0)
-		{
-		res -= c1;
-		for (; k > 0; k--)
-			res = (c2 + res)*res;
-		res += c1;
-		}
-
-	if (x.is_class() == NEGATIVE)
-		res = c1 / res;
-
-	return res;
-#else
-	interval<float_precision> fx(x);
 	double lower, upper;
-
-	fx = exp(fx);
-	lower = todouble( fx, ROUND_DOWN );
-	upper = todouble( fx, ROUND_UP );
+	lower = _intervalexpdouble(x.lower()).lower();
+	upper = _intervalexpdouble(x.upper()).upper();
 	return interval<double>(lower, upper);
-#endif
 	}
 
 // MSC exp() does not allow rounding control for the exp()
@@ -1989,26 +1730,12 @@ inline interval<double> exp(const interval<double>& x)
 // of exp() and convert back to float preserving as much accuracy as possible
 //
 inline interval<float> exp(const interval<float>& x)
-{
-#ifdef HARDWARE_SUPPORT
-	interval<double> exp(const interval<double>&);
-	interval<double> fx(x);
+	{
 	float lower, upper;
-
-	fx = exp(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-	return interval<double>(lower, upper);
-#else
-	interval<float_precision> fx(x);
-	float lower, upper;
-
-	fx = exp(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
+	lower = tofloat(_intervalexpdouble(x.lower()).lower(), ROUND_DOWN );
+	upper = tofloat(_intervalexpdouble(x.upper()).upper(), ROUND_UP );
 	return interval<float>(lower, upper);
-#endif
-}
+	}
 
 // Specilization for pow float_precision
 //
@@ -2039,13 +1766,13 @@ inline interval<float> pow(const interval<float>& x, const float y)
 	c = log(c);
 	c *= interval<double>(y);
 	c = exp(c);
-	lower = (float)c.lower();
-	upper = (float)c.upper();
-	if (lower > c.lower() )
+	lower = tofloat(c.lower(), ROUND_DOWN );
+	upper = tofloat( c.upper(), ROUND_UP );
+	/*if (lower > c.lower() )
 		lower -= lower * 0.5f * FLT_EPSILON;
 	if (upper < c.upper() )
 		upper += upper * 0.5f * FLT_EPSILON;
-
+*/
 	return interval<float>(lower, upper);
 	}
 
@@ -2055,9 +1782,9 @@ inline interval<float> pow(const interval<float>& x, const float y)
 //
 inline interval<double> pow(const interval<double>& x, const double y)
 	{
-	interval<double> c;
+	interval<double> c(x);
 
-	c = log(x);
+	c = log(c);
 	c *= interval<double>(y);
 	c = exp(c);
 
@@ -2070,40 +1797,13 @@ inline interval<double> pow(const interval<double>& x, const double y)
 ///
 //////////////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////////////////
-///
-/// Interval constants like PI, LN2 and LN10
-///
-//////////////////////////////////////////////////////////////////////////////////////
-
-// Load manifest constant PI for double
-//
-inline interval<double> int_pidouble()
-	{
-	interval<double> pi;
-#ifdef HARDWARE_SUPPORT
-	pi.lower( pidouble(ROUND_DOWN) );
-	pi.upper( pidouble(ROUND_UP) );
-#else
-	interval<float_precision> fx;
-
-	fx = _float_table(_PI,20);
-	pi.lower( todouble(fx,ROUND_DOWN));
-	pi.upper( todouble(fx, ROUND_UP ));
-#endif
-	return pi;
-	}
-
 // Load manifest constant PI for float
 //
 inline interval<float> int_pifloat()
 	{
-	interval<double> pid;
 	interval<float> pif;
-
-	pid = int_pidouble();
-	pif.lower(tofloat(pid.lower(), ROUND_DOWN));
-	pif.upper(tofloat(pid.upper(), ROUND_UP));
+	pif.lower(tofloat(PI.lower(), ROUND_DOWN));
+	pif.upper(tofloat(PI.upper(), ROUND_UP));
 	return pif;;
 	}
 
@@ -2122,34 +1822,15 @@ inline interval<float_precision> int_pi(const unsigned int p = float_precision_c
 	return interval<float_precision>(l, u);
 	}
 
-// Load manifest constant lN 2 for double
-//
-inline interval<double> int_ln2double()
-	{
-	interval<double> ln2;
-#ifdef HARDWARE_SUPPORT
-	ln2.lower(ln2double(ROUND_DOWN));
-	ln2.upper(ln2double(ROUND_UP));
-#else
-	interval<float_precision> fx;
-
-	fx = _float_table(_LN2, 20);
-	ln2.lower(todouble(fx, ROUND_DOWN));
-	ln2.upper(todouble(fx, ROUND_UP));
-#endif
-	return ln2;
-	}
 
 // Load manifest constant LN2 for float
 //
 inline interval<float> int_ln2float()
 	{
-	interval<double> ln2d;
 	interval<float> ln2f;
 
-	ln2d = int_ln2double();
-	ln2f.lower(tofloat(ln2d.lower(), ROUND_DOWN));
-	ln2f.upper(tofloat(ln2d.upper(), ROUND_UP));
+	ln2f.lower(tofloat(LN2.lower(), ROUND_DOWN));
+	ln2f.upper(tofloat(LN2.upper(), ROUND_UP));
 	return ln2f;;
 	}
 
@@ -2168,35 +1849,15 @@ inline interval<float_precision> int_ln2(const unsigned int p = float_precision_
 	return interval<float_precision>(l, u);
 	}
 
-// Load manifest constant ln10 for double
-//
-inline interval<double> int_ln10double()
-	{
-	interval<double> ln10;
-#ifdef HARDWARE_SUPPORT
-	ln10.lower(ln10double(ROUND_DOWN));
-	ln10.upper(ln10double(ROUND_UP));
-#else
-	interval<float_precision> fx;
-
-	fx = _float_table(_LN10, 20);
-	ln10.lower(todouble(fx, ROUND_DOWN));
-	ln10.upper(todouble(fx, ROUND_UP));
-#endif
-	return ln10;
-	}
-
 // Load manifest constant LN10 for float
 //
 inline interval<float> int_ln10float()
-{
-	interval<double> ln10d;
+	{
 	interval<float> ln10f;
 
-	ln10d = int_ln10double();
-	ln10f.lower(tofloat(ln10d.lower(), ROUND_DOWN));
-	ln10f.upper(tofloat(ln10d.upper(), ROUND_UP));
-	return ln10f;;
+	ln10f.lower(tofloat(LN10.lower(), ROUND_DOWN));
+	ln10f.upper(tofloat(LN10.upper(), ROUND_UP));
+	return ln10f;
 	}
 
 // Specilization for constant LN10 float_precision
@@ -2214,6 +1875,41 @@ inline interval<float_precision> int_ln10(const unsigned int p = float_precision
 	return interval<float_precision>(l, u);
 	}
 
+// Load manifest constant E for double
+//
+inline interval<double> int_Edouble()
+	{
+	const interval<double> e(2.7182818284590451, 2.7182818284590455);
+	return e;
+	}
+
+// Load manifest constant LN2 for float
+//
+inline interval<float> int_Efloat()
+	{
+	interval<double> ed;
+	interval<float> ef;
+
+	ed = int_Edouble();
+	ef.lower(tofloat(ed.lower(), ROUND_DOWN));
+	ef.upper(tofloat(ed.upper(), ROUND_UP));
+	return ef;
+	}
+
+// Specilization for constant E float_precision
+//
+inline interval<float_precision> int_E(const unsigned int p = float_precision_ctrl.precision())
+	{
+	float_precision fx(0, p + 2), l(0, p), u(0, p);
+
+	fx = _float_table(_EXP1, p + 2);
+	l.mode(ROUND_DOWN);
+	l = fx;
+	u.mode(ROUND_UP);
+	u = fx;
+
+	return interval<float_precision>(l, u);
+	}
 
 //////////////////////////////////////////////////////////////////////////////////////
 ///
@@ -2227,150 +1923,206 @@ inline interval<float_precision> int_ln10(const unsigned int p = float_precision
 ///
 //////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef HARDWARE_SUPPORT
-
-// Sin() for double
-inline double sindouble(double d, enum round_mode rm)
+static interval<double> _intervalsindouble(const double x)
 	{
-	double res = d;
-
-	switch (rm)
+	int i, k, sign = 1;
+	double xn = x;
+	const interval<double> c3(3), c4(4);
+	const double PI = 3.1415926535897931;
+	interval<double> zn, zsq, isum, idelta;
+	if (xn<0) { xn = -xn; sign = -1; }
+	// Argument reduction
+	//  x has been reduce to between 0..2*PI prior to call
+	//if (xn >= 2 * PI)
+	//	xn = fmod( xn, 2 * PI);
+	//   2) Then reduced further to between 0..PI using sin(x+PI)=-Sin(x) 
+	if (xn >= PI)
 		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
+		xn -= PI; sign *= -1;
 		}
-
-	_asm
+	//   3) Finally reduced it to below 0.5/3^reduction factor, using the trisection identity 
+	//   The argument reduction is used to reduced the number of taylor iteration and to minimize round off erros and calculation time  
+	zn = interval<double>(xn);
+	for (k = 0; false && zn.center()>=1; ++k)
+		zn /= c3;
+	//   4) Then do the taylor.  
+	// Taylor series of sin(x)
+	// Sin(x) = x - x^3/3! + x^5/5!-...
+	// Initialize the iteration
+	zsq = zn * zn;  idelta=isum = zn; 
+	// Iterate using taylor series sin(x)=x-x^3/3!+x^5/5!...
+	for (i = 3;; i += 2)
 		{
-		fld qword ptr[res];  Load lower into floating point stack
-		fsin;				 Calculate sin
-		fstp qword ptr[res]; Store result in lower
+		idelta = idelta*zsq / interval<double>(i*(i - 1));
+		idelta = -idelta; 
+		if (isum.center() + idelta.center() == isum.center()) break;
+		isum += idelta;
 		}
-	fpnear();
-
-	return res;
+	// Reverse reduction
+	for (; k>0; --k) // sin(3x)=sin(x)(3-4*sin(x)^2)
+		isum = isum * ( c3 - c4 * isum * isum);
+	if (sign<0) isum = -isum;
+	return isum;
 	}
 
-// Sin() for float interval
-inline float sinfloat(float f, enum round_mode rm)
+static interval<double> _intervalcosdouble(const double x)
 	{
-	double res = f;
-	float fres;
-
-	res = sindouble(res, rm);
-	fres = tofloat(res, rm);
-	return fres;
-	}
-
-
-// cos() for double
-inline double cosdouble(double d, enum round_mode rm)
-	{
-	double res = d;
-
-	switch (rm)
+	int i, k, sign = 1;
+	double xn = x;
+	const interval<double> c1(1), c3(3), c4(4);
+	const double PI = 3.1415926535897931;
+	interval<double> zn, zsq, isum, idelta;
+	if (xn<0) { xn = -xn; sign = -1; }
+	// Argument reduction
+	//  x has been reduce to between 0..2*PI prior to call
+	//if (xn >= 2 * PI)
+	//	xn = fmod(xn, 2 * PI);
+	//   2) Then reduced further to between 0..PI using cos(x)=cos(2PI-x) 
+	if (xn >= PI)
+		xn = 2* PI - xn; 
+	//   3) Finally reduced it to below 0.5/3^reduction factor, using the trisection identity 
+	//   The argument reduction is used to reduced the number of taylor iteration and to minimize round off erros and calculation time  
+	zn = interval<double>(xn);
+	for (k = 0; false && zn.center()>=1; ++k)
+		zn /= c3;
+	//   4) Then do the taylor.  
+	// Taylor series of sin(x)
+	// Cos(x) = 1 - x^2/2! + x^4/4!-...
+	// Initialize the iteration
+	zsq = zn * zn;  idelta=isum = c1;
+	// Iterate using taylor series  Cos(x) = 1 - x^2/2! + x^4/4!-...
+	for (i = 2;; i += 2)
 		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
+		idelta = idelta * zsq / interval<double>(i*(i-1));
+		idelta = -idelta; 
+		if (isum.center() + idelta.center() == isum.center()) break;
+		isum += idelta;
 		}
-
-	_asm
-		{
-		fld qword ptr[res];  Load lower into floating point stack
-		fcos;				 Calculate cos
-		fstp qword ptr[res]; Store result in lower
-		}
-	fpnear();
-
-	return res;
+	// Reverse reduction
+	for (; k>0; --k) // cos(3x)=cos(x)(-3+4*cos(x)^2)
+		isum = isum * (-c3 - c4 * isum * isum);
+	return isum;
 	}
 
-// Cos() for float interval
-inline float cosfloat(float f, enum round_mode rm)
+//  Use the identity tan(x)=Sin(x)/Sqrt(1-Sin(x)^2)
+static interval<double> _intervaltandouble(const double x)
 	{
-	double res = f;
-	float fres;
-
-	res = cosdouble( res, rm );
-	fres = tofloat(res, rm);
-	return fres;
-	}
-
-// tan() for double
-inline double tandouble(double d, enum round_mode rm)
-	{
-	double res = d;
-
-	switch (rm)
+	const interval<double> c1(1);
+	const double PI = 3.1415926535897931;
+	interval<double> z, zsq;
+	//  x has been reduce to between 0..2*PI prior to call
+	if (x == PI || x == PI * 3 )
 		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
+		throw interval<double>::domain_error();
 		}
-
-	_asm
-		{
-		fld qword ptr[res];  Load lower into floating point stack
-		fptan;               Calculate tan
-		fstp qword ptr[res]; Pop ST(0) and ignore
-		fstp qword ptr[res]; Store result
-		}
-	fpnear();
-
-	return res;
+	z = sin(interval<double>(x));
+	zsq = sqrt(c1 - z*z);
+	if (abs(x) >= PI*0.5&& abs(x) <= PI*1.5)
+		zsq = -zsq;
+	z /= zsq;
+	return z;
 	}
 
-// Tan() for float interval
-inline float tanfloat(float f, enum round_mode rm)
+//  Use the taylor series. 
+//asin(x) == x + x^3/(2*3)+(1*3)x^5/(2*4*5)+(1*3*5)x^7/(2*4*6*7)....
+static interval<double> _intervalasindouble(const double x)
 	{
-	double res = f;
-	float fres;
-
-	res = tandouble( res, rm );
-	fres = tofloat( res, rm );
-	return fres;
-	}
-
-
-// tan() for double
-inline double atandouble(double d, enum round_mode rm)
-	{
-	double res = d;
-
-	switch (rm)
+	int sign = 1;
+	double xn = x;
+	interval<double> zn, znsq, sq2, delta, sum, uc, lc, c1(1), c2(2);
+	int i, k;
+	// uc, lc;
+	if (fabs(x)>1)
+		throw interval<double>::domain_error(); 
+	//	Use argument reduction via the identity 
+	//	arcsin(x)=2arcsin(x/(sqrt(2)*sqrt(1+sqrt(1-x*x)))	
+	//  The argument reduction is used to reduced the number of taylor iteration
+	//	and to minimize round off erros and calculation time
+	if( x<0 ) {xn = -xn; sign = -1; }
+	zn = interval<double>(xn); sq2 = sqrt(c2);
+	for (k = 0; zn.center()>0.5; ++k)
 		{
-		case ROUND_DOWN: fpdown(); break;
-		case ROUND_UP: fpup(); break;
+		zn /= sq2 * sqrt( c1 + sqrt( c1 - zn * zn ) );
 		}
-
-	_asm
+	sum = zn; znsq = zn * zn; delta = zn;
+	for (i = 3;; i += 2)
 		{
-		fld qword ptr[res];		Load lower into floating point stack
-		fld1;					Load 1.0 on top of stack
-		fpatan;					Calculate tan
-		fstp qword ptr[res];	Store result
+		uc = interval<double>((i - 2)*(i-2)); lc = interval<double>((i - 1)*i);
+		zn = ( uc * znsq ) / lc;
+		delta *= zn;
+		if (sum.center() + delta.center() == sum.center()) break;
+		sum += delta;
 		}
-	fpnear();
-
-	return res;
+	if (k>0) // Reverse reduction
+		sum *= interval<double>(pow(2,k));
+	if (sign<0) sum = -sum;
+	return sum;
 	}
 
-// Atan() for float interval
-inline float atanfloat(float f, enum round_mode rm)
+// Use the identity. acos(x)==PI/2-asin(x)
+static interval<double> _intervalacosdouble(const double x)
 	{
-	double res = f;
-	float fres;
-
-	res = atandouble( res, rm );
-	fres = tofloat(res, rm);
-	return fres;  // or alternatively return tofloat(atandouble((double)f, rm ), rm );
+	interval<double> z;
+	if (fabs(x)>1)
+		throw interval<double>::domain_error();
+	z = _intervalasindouble(x);
+	z = PI * interval<double>(0.5) - z;
+	return z;
 	}
 
-#endif
+// Use the Taylor serie. 
+// ArcTan(x) = x - x^3/3 + x^5/5 ...
+static interval<double> _intervalatandouble(const double x)
+	{
+	int i, k;
+	interval<double> zn, znsq, delta, sum;
+	const interval<double> c1(1);
+	// First reduce x to abs(x)< 1 to improve taylor series
+	// using the identity. ArcTan(x)=2*ArcTan(x/(1+sqrt(1+x^2)))
+	zn = interval<double> (x);
+	for (k = 0; abs(zn.center())>0.5; ++k)
+		zn /= c1+sqrt(c1+zn*zn);
+	// Iterate ArcTan(x) = x - x^3/3 + x^5/5 ...
+	znsq = zn * zn; sum = zn;
+	for (i = 3; ; i += 2)
+		{
+		zn *= znsq; zn = -zn;
+		delta = zn / interval<double>(i);
+		if (sum.center() + delta.center() == sum.center()) break;
+		sum += delta;
+		}
+	if (k>0) // Reverse reduction
+		sum *= interval<double>(pow(2,k));
+	return sum;
+	}
+
+static interval<double> _intervalatan2double(const double y, const double x)
+	{
+	interval<double> u, ipi=PI;
+	if (x == 0)
+		{ // x == 0
+		if (y == 0)
+			return interval<double>();
+		u = ipi * interval<double>(0.5);
+		if (y < 0)
+			u = -u;
+		}
+	else  // x != 0
+		{
+		u = atan(interval<double>(y) / interval<double>(x));
+		if (x < 0)
+			if (y < 0)
+				u -= ipi;
+			else
+				u += ipi;
+		}
+	return u;
+	}
 
 // Specilization for sin float_precision
 //
 inline interval<float_precision> sin(const interval<float_precision>& x)
-{
+	{
 	float_precision l, u;
 
 	l.assign(x.lower());  // Assign value, precision and mode
@@ -2382,48 +2134,43 @@ inline interval<float_precision> sin(const interval<float_precision>& x)
 	u = sin(u);
 
 	return interval<float_precision>(l, u);
-}
+	}
 
 // sin for float using managed code.
 //
 inline interval<float> sin(const interval<float>& x)
-{
+	{
 	float lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = sinfloat(x.lower(), ROUND_DOWN);
-	upper = sinfloat(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = sin(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-#endif
+	interval<double> t(x.lower(), x.upper());
+	t = sin(t);
+	lower = tofloat(t.lower(), ROUND_DOWN);
+	upper = tofloat(t.upper(), ROUND_UP );
 	return interval<float>(lower, upper);
-}
+	}
 
 // Sin for double using managed code.
 //
 inline interval<double> sin(const interval<double>& x)
-{
+	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = sindouble(x.lower(), ROUND_DOWN);
-	upper = sindouble(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = sin(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
+	interval<double> tc, tb;
+	// First reduce x to between 0..2*PI
+	tb = interval<double>(2) * PI;
+	tc = x / tb;
+	tc = interval<double>(tc.lower()<0?ceil(tc.lower()):floor(tc.lower()), tc.upper()<0?ceil(tc.upper()) : floor(tc.upper()));
+	tc = x - tc*tb;
+	tb = _intervalsindouble(tc.lower());
+	lower = tb.lower(); upper = tb.upper();
+	tc = _intervalsindouble(tc.upper());
+	if (lower > tc.lower()) lower = tc.lower();
+	if (upper < tc.upper()) upper = tc.upper();
 	return interval<double>(lower, upper);
-}
+	}
 
 // Specilization for cos float_precision
 //
 inline interval<float_precision> cos(const interval<float_precision>& x)
-{
+	{
 	float_precision l, u;
 
 	l.assign(x.lower());  // Assign value, precision and mode
@@ -2435,48 +2182,44 @@ inline interval<float_precision> cos(const interval<float_precision>& x)
 	u = cos(u);
 
 	return interval<float_precision>(l, u);
-}
+	}
 
 // cos for float using managed code.
 //
 inline interval<float> cos(const interval<float>& x)
-{
+	{
 	float lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = cosfloat(x.lower(), ROUND_DOWN);
-	upper = cosfloat(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = cos(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-#endif
+	interval<double> t(x.lower(), x.upper());
+	t = cos(t);
+	lower = tofloat(t.lower(), ROUND_DOWN);
+	upper = tofloat(t.upper(), ROUND_UP);
+	
 	return interval<float>(lower, upper);
-}
+	}
 
 // Cos for double using managed code.
 //
 inline interval<double> cos(const interval<double>& x)
-{
+	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = cosdouble(x.lower(), ROUND_DOWN);
-	upper = cosdouble(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = cos(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
+	interval<double> tc, tb;
+	// First reduce x to between 0..2*PI
+	tb = interval<double>(2) * PI;
+	tc = x / tb;
+	tc = interval<double>(tc.lower()<0 ? ceil(tc.lower()) : floor(tc.lower()), tc.upper()<0 ? ceil(tc.upper()) : floor(tc.upper()));
+	tc = x - tc*tb;
+	tb = _intervalcosdouble(tc.lower());
+	lower = tb.lower(); upper = tb.upper();
+	tc = _intervalcosdouble(tc.upper());
+	if (lower > tc.lower()) lower = tc.lower();
+	if (upper < tc.upper()) upper = tc.upper();
 	return interval<double>(lower, upper);
-}
+	}
 
 // Specilization for tan float_precision
 //
 inline interval<float_precision> tan(const interval<float_precision>& x)
-{
+	{
 	float_precision l, u;
 
 	l.assign(x.lower());  // Assign value, precision and mode
@@ -2488,43 +2231,39 @@ inline interval<float_precision> tan(const interval<float_precision>& x)
 	u = tan(u);
 
 	return interval<float_precision>(l, u);
-}
+	}
 
 // tan for float using managed code.
 //
 inline interval<float> tan(const interval<float>& x)
-{
+	{
 	float lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = tanfloat(x.lower(), ROUND_DOWN);
-	upper = tanfloat(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = tan(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-#endif
+	interval<double> t(x.lower(), x.upper());
+	t = tan(t);
+	lower = tofloat(t.lower(), ROUND_DOWN);
+	upper = tofloat(t.upper(), ROUND_UP);
+ 
 	return interval<float>(lower, upper);
-}
+	}
 
 // Tan for double using managed code.
 //
 inline interval<double> tan(const interval<double>& x)
-{
+	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = tandouble(x.lower(), ROUND_DOWN);
-	upper = tandouble(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = tan(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
+	interval<double> tb, tc;
+	// First reduce x to between 0..2*PI
+	tb = interval<double>(2) * PI;
+	tc = x / tb;
+	tc = interval<double>(tc.lower()<0 ? ceil(tc.lower()) : floor(tc.lower()), tc.upper()<0 ? ceil(tc.upper()) : floor(tc.upper()));
+	tc = x - tc*tb;
+	tb = _intervaltandouble(tc.lower());
+	lower = tb.lower(); upper = tb.upper();
+	tc = _intervaltandouble(tc.upper());
+	if (lower > tc.lower()) lower = tc.lower();
+	if (upper < tc.upper()) upper = tc.upper();
 	return interval<double>(lower, upper);
-}
+	}
 
 // Specilization for arctan float_precision
 //
@@ -2546,173 +2285,47 @@ inline interval<float_precision> atan(const interval<float_precision>& x)
 // Arctan for float using managed code.
 //
 inline interval<float> atan(const interval<float>& x)
-{
+	{
 	float lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = atanfloat(x.lower(), ROUND_DOWN);
-	upper = atanfloat(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
+	lower = tofloat(_intervalatandouble(x.lower()).lower(), ROUND_DOWN);
+	upper = tofloat(_intervalatandouble(x.upper()).upper(), ROUND_UP);
 
-	fx = atan(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-#endif
 	return interval<float>(lower, upper);
-}
-
-
+	}
 
 // ArcTan for double using managed code.
 //
 inline interval<double> atan(const interval<double>& x)
-{
+	{
 	double lower, upper;
-#ifdef HARDWARE_SUPPORT
-	lower = atandouble(x.lower(), ROUND_DOWN);
-	upper = atandouble(x.upper(), ROUND_UP);
-#else
-	interval<float_precision> fx(x);
-
-	fx = atan(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
-#endif
+	lower = _intervalatandouble(x.lower()).lower();
+	upper = _intervalatandouble(x.upper()).upper();
 	return interval<double>(lower, upper);
-}
+	}
 
-// MSC asin() does not allow rounding control
-// So we have to do it manually
-/// Description:
-///   Use a taylor series until their is no more change in the result
-///   asin(x) == x + x^3/(2*3)+(1*3)x^5/(2*4*5)+(1*3*5)x^7/(2*4*6*7)....
-///   Use argument reduction via the identity arcsin(x)=2arcsin(x)/(sqrt(2)+sqrt(1-x*x))
-//	  This function replace the other function using newton iteration. Taylor series is significant
-//    faster e.g 50% for 10 digits, 3x for 100 digits and 5x for 1000 digits.
-//
 inline interval<double> asin(const interval<double>& x)
-{
-#ifdef HARDWARE_SUPPORT
-	int k, sign;
-	interval<double> r, u, v, v2, sqrt2, lc, uc;
-	const double c1(1), c2(2);
-
-	if (x.lower() >= c1 || x.upper() <= -c1)
-		{
-		throw interval<double>::domain_error(); return x;
-		}
-
-	v = x;
-	if (v.lower() < -c1)
-		v.lower(-c1);
-	if (v.upper() > c1)
-		v.upper(c1);
-
-	sign = v.is_class();
-	if (sign == NEGATIVE)
-		v = -v;
-
-	// Now use the identity arcsin(x)=2arcsin(x)/(sqrt(2)+sqrt(1-x*x))
-	// until argument is less than dlimit
-	// Reduce the argument to below 0.5 to make the newton run faster
-	sqrt2 = interval<double>(c2);				// Ensure correct number of digits
-	sqrt2 = sqrt(sqrt2);	// Now calculate sqrt2 with precision digits
-	for (k = 0; v.lower() > 0.5; k++)
-		v /= sqrt2 * sqrt(interval<double>(c1) + sqrt(interval<double>(c1) - v * v));
-
-	v2 = v * v;
-	r = v;
-	u = v;
-	// Now iterate using taylor expansion
-	for (unsigned int j = 3;; j += 2)
-		{
-		uc = interval<double>((j - 2) * (j - 2));
-		lc = interval<double>(j * j - j);
-		v = uc * v2 / lc;
-		r *= v;
-		if( u.lower() + r.lower() == u.lower() || u.upper() + r.upper() == u.upper())
-			break;
-		u += r;
-		}
-
-	if (k > 0)
-		u *= interval<double>(1 << k);
-
-	if (sign == NEGATIVE )
-		u = -u;
-
-	return u;
-#else
-	interval<float_precision> fx(x);
+	{
 	double lower, upper;
-
-	fx = asin(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
+	lower = _intervalasindouble(x.lower()).lower();
+	upper = _intervalasindouble(x.upper()).upper();
 	return interval<double>(lower, upper);
-#endif
-}
+	}
 
-// MSC acos() does not allow rounding control
-// So we have to do it manually
-/// Description:
-///   Use a taylor series until their is no more change in the result
-///   asin(x) == x + x^3/(2*3)+(1*3)x^5/(2*4*5)+(1*3*5)x^7/(2*4*6*7)....
-///   Use argument reduction via the identity arcsin(x)=2arcsin(x)/(sqrt(2)+sqrt(1-x*x))
-//	  This function replace the other function using newton iteration. Taylor series is significant
-//    faster e.g 50% for 10 digits, 3x for 100 digits and 5x for 1000 digits.
-//
 inline interval<double> acos(const interval<double>& x)
-{
-#ifdef HARDWARE_SUPPORT
-	interval<double> pi, res;
-	const double c1(1);
-
-	if (x.lower() >= c1 || x.upper() <= -c1)
-		{
-		throw interval<double>::domain_error(); return x;
-		}
-
-	pi.lower( pidouble(ROUND_DOWN) );
-	pi.upper( pidouble(ROUND_UP) );
-	res = pi * interval<double>(0.5) - asin( x );
-	return res;
-#else
-	interval<float_precision> fx(x);
+	{
 	double lower, upper;
-
-	fx = acos(fx);
-	lower = todouble(fx, ROUND_DOWN);
-	upper = todouble(fx, ROUND_UP);
+	lower = _intervalacosdouble(x.lower()).lower();
+	upper = _intervalacosdouble(x.upper()).upper();
 	return interval<double>(lower, upper);
-#endif
-}
+	}
 
-// MSC asin() does not allow rounding control for the asin()
-// Since we dont normally do it using float arithmetic (as for sqrt(), log() and log10()) we simply just call the interval<double> version
-// of asin() and convert back to float preserving as much accuracy as possible
-//
 inline interval<float> asin(const interval<float>& x)
-{
-#ifdef HARDWARE_SUPPORT
-	interval<double> asin(const interval<double>&);
-	interval<double> fx(x);
+	{
 	float lower, upper;
-
-	fx = asin(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-	return interval<double>(lower, upper);
-#else
-	interval<float_precision> fx(x);
-	float lower, upper;
-
-	fx = asin(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
+	lower = tofloat(_intervalasindouble(x.lower()).lower(), ROUND_DOWN);
+	upper = tofloat(_intervalasindouble(x.upper()).upper(), ROUND_UP);
 	return interval<float>(lower, upper);
-#endif
-}
+	}
 
 // Specilization for arcsin float_precision
 //
@@ -2731,30 +2344,12 @@ inline interval<float_precision> asin(const interval<float_precision>& x)
 	return interval<float_precision>(l, u);
 	}
 
-// MSC acos() does not allow rounding control for the acos()
-// Since we dont normally do it using float arithmetic (as for sqrt(), log() and log10()) we simply just call the interval<double> version
-// of acos() and convert back to float preserving as much accuracy as possible
-//
 inline interval<float> acos(const interval<float>& x)
 	{
-#ifdef HARDWARE_SUPPORT
-	interval<double> acos(const interval<double>&);
-	interval<double> fx(x);
 	float lower, upper;
-
-	fx = acos(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
-	return interval<double>(lower, upper);
-#else
-	interval<float_precision> fx(x);
-	float lower, upper;
-
-	fx = acos(fx);
-	lower = tofloat(fx, ROUND_DOWN);
-	upper = tofloat(fx, ROUND_UP);
+	lower = tofloat(_intervalacosdouble(x.lower()).lower(), ROUND_DOWN);
+	upper = tofloat(_intervalacosdouble(x.upper()).upper(), ROUND_UP);
 	return interval<float>(lower, upper);
-#endif
 	}
 
 // Specilization for arccos float_precision
@@ -2788,11 +2383,669 @@ inline interval<float_precision> acos(const interval<float_precision>& x)
 ///
 //////////////////////////////////////////////////////////////////////////////////////
 
-// Not yet implemented
+// Specilization for sinh float_precision
+//
+// Use the identity. sinh(x)=0.5*(exp(x)-1/exp(x))
+inline interval<float_precision> sinh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
 
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = sinh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = sinh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// sinh for float using managed code.
+//
+// Use the identity. sinh(x)=0.5*(exp(x)-1/exp(x))
+inline interval<float> sinh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = sinh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower,upper);
+	}
+
+// Sinh for double using managed code.
+//
+// Use the identity. sinh(x)=0.5*(exp(x)-1/exp(x))
+inline interval<double> sinh(const interval<double>& x)
+	{
+	const interval<double> c1(1), c05(0.5);
+	interval<double> e = exp(x);
+	return c05 * (e - c1 / e);
+	}
+
+// Specilization for cosh float_precision
+//
+// Use the identity. cosh(x)=0.5*(exp(x)+1/exp(x))
+inline interval<float_precision> cosh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
+
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = cosh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = cosh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// sinh for float using managed code.
+//
+// Use the identity. cosh(x)=0.5*(exp(x)+1/exp(x))
+inline interval<float> cosh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = cosh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower, upper);
+	}
+
+// Sinh for double using managed code.
+//
+// Use the identity. cosh(x)=0.5*(exp(x)+1/exp(x))
+inline interval<double> cosh(const interval<double>& x)
+	{
+	const interval<double> c1(1), c05(0.5);
+	interval<double> e = exp(x);
+	return c05 * (e + c1 / e);
+	}
+
+
+// Specilization for tanh float_precision
+//
+// Use the identity. tanh(x)=(exp(x)-1/exp(x))/(exp(x)+1/exp(x))=(exp(x)^2-1)/(exp(x)^2+1)
+inline interval<float_precision> tanh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
+
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = tanh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = tanh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// tanh for float using managed code.
+//
+// Use the identity. tanh(x)=(exp(x)-1/exp(x))/(exp(x)+1/exp(x))=(exp(x)^2-1)/(exp(x)^2+1)
+inline interval<float> tanh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = tanh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower, upper);
+	}
+
+// tanh for double using managed code.
+//
+// Use the identity. tanh(x)=(exp(x)-1/exp(x))/(exp(x)+1/exp(x))=(exp(x)^2-1)/(exp(x)^2+1)
+inline interval<double> tanh(const interval<double>& x)
+	{
+	const interval<double> c1(1);
+	interval<double> e = exp(x);
+	e *= e;
+	return ( e - c1 ) / ( e + c1 );
+	}
+
+
+// Specilization for asinh float_precision
+//
+// Use the identity. asinh(x)=Ln(x)+sqrt(x^2+1)
+inline interval<float_precision> asinh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
+
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = asinh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = asinh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// asinh for float using managed code.
+//
+// Use the identity. asinh(x)=Ln(x)+sqrt(x^2+1)
+inline interval<float> asinh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = asinh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower, upper);
+	}
+
+// aSinh for double using managed code.
+//
+// Use the identity. asinh(x)=Ln(x+sqrt(x^2+1))
+inline interval<double> asinh(const interval<double>& x)
+	{
+	const interval<double> c1(1);
+	return log( x  + sqrt( x*x + c1 ) );
+	}
+
+// Specilization for acosh float_precision
+//
+// Use the identity. acosh(x)=Ln(x)+sqrt(x^2-1)
+inline interval<float_precision> acosh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
+
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = acosh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = acosh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// acosh for float using managed code.
+//
+// Use the identity. acosh(x)=Ln(x+sqrt(x^2-1))
+inline interval<float> acosh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = acosh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower, upper);
+	}
+
+// acosh for double using managed code.
+//
+// Use the identity. acosh(x)=Ln(x)+sqrt(x^2-1)
+inline interval<double> acosh(const interval<double>& x)
+	{
+	const interval<double> c1(1);
+	if (x.lower() < 1 )
+		throw interval<double>::domain_error();
+	return log(x + sqrt( x*x - c1 ) );
+	}
+
+
+// Specilization for atanh float_precision
+//
+// Use the identity. atanh(x)=0.5*Ln((1+x)/(1-x))
+inline interval<float_precision> atanh(const interval<float_precision>& x)
+	{
+	float_precision l, u;
+
+	l.assign(x.lower());  // Assign value, precision and mode
+	l.mode(ROUND_DOWN);
+	l = atanh(l);
+
+	u.assign(x.upper());  // Assign value, precision and mode
+	u.mode(ROUND_UP);
+	u = atanh(u);
+
+	return interval<float_precision>(l, u);
+	}
+
+// atanh for float using managed code.
+//
+// Use the identity. atanh(x)=0.5*Ln((1+x)/(1-x))
+inline interval<float> atanh(const interval<float>& x)
+	{// do the calculation in double and convert to float at the end.
+	interval<double> d(x);
+	float lower, upper;
+	d = atanh(d);
+	lower = tofloat(d.lower(), ROUND_DOWN);
+	upper = tofloat(d.upper(), ROUND_UP);
+	return interval<float>(lower, upper);
+	}
+
+// atanh for double using managed code.
+//
+// Use the identity. atanh(x)=0.5*Ln((1+x)/(1-x))
+inline interval<double> atanh(const interval<double>& x)
+	{
+	const interval<double> c1(1), c05(0.5);
+	if(x.lower() <=-1 || x.upper() >= 1 )
+		throw interval<double>::domain_error();
+	return c05*log( (c1+x) / (c1-x) );
+	}
 //////////////////////////////////////////////////////////////////////////////////////
 ///
-/// Interval sinh(), cosh(), tanh(), asinh(), acosh(), atanh()
+/// END Interval sinh(), cosh(), tanh(), asinh(), acosh(), atanh()
 ///
 //////////////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////
+//
+// Low Level Interval arithmetic
+//
+//////////////////////////////////////////////////////////////////////////
+static void split(const double &a, double &x, double &y)
+	{
+	double tmp;
+	static const double sigma = ldexp(1.0, 27) + 1;
+	tmp = a* sigma;
+	x = tmp - (tmp - a);
+	y = a - x;
+	}
+
+static double succ(const double &x)
+	{
+	static const double th1 = ldexp(1.0, -969);
+	static const double th2 = ldexp(1.0, -1021);
+	static const double c1 = ldexp(1.0, -53) + ldexp(1.0, -105);
+	static const double c2 = ldexp(1.0, -1074);
+	static const double c3 = ldexp(1.0, 53);
+	static const double c4 = ldexp(1.0, -53);
+	double a, c, e;
+	a = fabs(x);
+	if (a >= th1) return x + a*c1;
+	if (a < th2) return x + c2;
+	c = c3*x;
+	e = c1*fabs(c);
+	return (c + e) * c4;
+	}
+
+static double pred(const double &x)
+	{
+	static const double th1 = ldexp(1.0, -969);
+	static const double th2 = ldexp(1.0, -1021);
+	static const double c1 = ldexp(1.0, -53) + ldexp(1.0, -105);
+	static const double c2 = ldexp(1.0, -1074);
+	static const double c3 = ldexp(1.0, 53);
+	static const double c4 = ldexp(1.0, -53);
+	double a, c, e;
+	a = fabs(x);
+	if (a >= th1) return x - a*c1;
+	if (a < th2) return x - c2;
+	c = c3*x;
+	e = c1*fabs(c);
+	return (c - e) * c4;
+	}
+
+static void twosum(const double &a, const double &b, double &x, double &y)
+	{
+	double tmp;
+	x = a + b;
+	if (fabs(a) > fabs(b))
+		{
+		tmp = x - a;
+		y = b - tmp;
+		}
+	else
+		{
+		tmp = x - b;
+		y = a - tmp;
+		}
+	}
+
+static void twoproduct(const double &a, const double b, double &x, double &y)
+	{
+	static const double th = ldexp(1.0, 996);
+	static const double c1 = ldexp(1.0, -28);
+	static const double c2 = ldexp(1.0, 28);
+	static const double th2 = ldexp(1.0, 1023);
+	double na, nb, a1, a2, b1, b2;
+	x = a*b;
+	if (fabs(a) > th)
+		{
+		na = a * c1;
+		nb = b * c2;
+		}
+	else
+		if (fabs(b) > th)
+			{
+			na = a * c2;
+			nb = b * c1;
+			}
+		else
+			{
+			na = a;
+			nb = b;
+			}
+	split(na, a1, a2);
+	split(nb, b1, b2);
+	if (fabs(x) > th2)
+		y = a2 * b2 - ((((x*0.5) - (a1*0.5)*b1)*2.0 - a2*b1) - a1*b2);
+	else
+		y = a2 * b2 - (((x - a1*b1) - a2*b1) - a1*b2);
+	}
+
+
+inline float tofloat(const double &d, const enum round_mode rm)
+	{
+	float f = (float)d; // round to closets
+
+	if (f != d)
+		{
+		if (rm == ROUND_UP)
+			{
+			if (f < d  )
+				f = nextafterf( f, std::numeric_limits<float>::infinity());
+			}
+		if (rm == ROUND_DOWN)
+			{//
+			if ( f > d )
+				f = nextafterf( f, -std::numeric_limits<float>::infinity());
+			}
+		}
+	return f;
+	/*if (lower > c.lower() )
+	lower -= lower * 0.5f * FLT_EPSILON;
+	if (upper < c.upper() )
+	upper += upper * 0.5f * FLT_EPSILON;
+	*/
+	}
+
+inline double add_down(const double &x, const double &y)
+	{
+	double r, r2;
+	twosum(x, y, r, r2);
+	if (r == std::numeric_limits<double>::infinity())
+	{
+		if (x == std::numeric_limits<double>::infinity() ||
+			y == std::numeric_limits<double>::infinity())
+			return r;
+		else
+			return std::numeric_limits<double>::max();
+	}
+	else
+		if (r == -std::numeric_limits<double>::infinity())
+			return r;
+	if (r2 < 0)
+		return pred(r);
+	return r;
+	}
+
+inline double add_up(const double &x, const double &y)
+	{
+	double r, r2;
+	twosum(x, y, r, r2);
+	if (r == std::numeric_limits<double>::infinity())
+		return r;
+	else
+		if (r == -std::numeric_limits<double>::infinity())
+			if (x == -std::numeric_limits<double>::infinity() ||
+				y == -std::numeric_limits<double>::infinity())
+				return r;
+			else
+				return -std::numeric_limits<double>::max();
+	if (r2 > 0)
+		return succ(r);
+	return r;
+	}
+
+inline double sub_down(const double &x, const double &y)
+	{
+	double r, r2;
+	twosum(x, -y, r, r2);
+	if (r == std::numeric_limits<double>::infinity())
+		{
+		if (x == std::numeric_limits<double>::infinity() ||
+			y == std::numeric_limits<double>::infinity())
+			return r;
+		else
+			return std::numeric_limits<double>::max();
+		}
+	else
+		if (r == -std::numeric_limits<double>::infinity())
+			return r;
+	if (r2 < 0)
+		return pred(r);
+	return r;
+	}
+
+inline double sub_up(const double &x, const double &y)
+	{
+	double r, r2;
+	twosum(x, -y, r, r2);
+	if (r == std::numeric_limits<double>::infinity())
+		return r;
+	else
+		if (r == -std::numeric_limits<double>::infinity())
+			if (x == -std::numeric_limits<double>::infinity() ||
+				y == -std::numeric_limits<double>::infinity())
+				return r;
+			else
+				return -std::numeric_limits<double>::max();
+	if (r2 > 0)
+		return succ(r);
+	return r;
+	}
+
+inline double mul_down(const double &x, const double &y)
+	{
+	double r, r2;
+	double s, s2, t;
+	static const double th = ldexp(1.0, -969);
+	static const double c = ldexp(1.0, 537);
+	twoproduct(x, y, r, r2);
+
+	if (r == std::numeric_limits<double>::infinity())
+		{
+		if (fabs(x) == std::numeric_limits<double>::infinity() ||
+			fabs(y) == std::numeric_limits<double>::infinity())
+			return r;
+		else
+			return std::numeric_limits<double>::max();
+		}
+	else
+		if (r == -std::numeric_limits<double>::infinity())
+			return r;
+	if (fabs(r) >= th)
+		{
+		if (r2 < 0)
+			return pred(r);
+		return r;
+		}
+	else
+		{
+		twoproduct(x*c, y*c, s, s2);
+		t = (r*c)*c;
+		if (t > s || (t == s && s2 < 0.0))
+			return pred(r);
+		}
+	return r;
+	}
+
+inline double mul_up(const double &x, const double &y)
+	{
+	double r, r2;
+	double s, s2, t;
+	static const double th = ldexp(1.0, -969);
+	static const double c = ldexp(1.0, 537);
+	twoproduct(x, y, r, r2);
+
+	if (r == std::numeric_limits<double>::infinity())
+		return r;
+	else if (r == -std::numeric_limits<double>::infinity())
+		{
+		if (fabs(x) == std::numeric_limits<double>::infinity() ||
+			fabs(y) == std::numeric_limits<double>::infinity())
+			return r;
+		else
+			return -std::numeric_limits<double>::max();
+		}
+	if (fabs(r) >= th)
+		{
+		if (r2 > 0)
+			return succ(r);
+		return r;
+		}
+	else
+		{
+		twoproduct(x*c, y*c, s, s2);
+		t = (r*c)*c;
+		if (t < s || (t == s && s2 > 0.0))
+			return succ(r);
+		}
+	return r;
+	}
+
+inline double div_up(const double &x, const double &y)
+	{
+	double r, r2;
+	double xn, yn, d;
+	static const double th1 = ldexp(1.0, -969);
+	static const double th2 = ldexp(1.0, 918);
+	static const double c1 = ldexp(1.0, 105);
+	static const double c2 = ldexp(1.0, -1074);
+	if (x == 0 || y == 0 || fabs(x) == std::numeric_limits<double>::infinity() ||
+		fabs(y) == std::numeric_limits<double>::infinity() || x != x || y != y)
+		return x / y;
+	if (y < 0)
+		{
+		xn = -x;
+		yn = -y;
+		}
+	else
+		{
+		xn = x;
+		yn = y;
+		}	
+	if (fabs(xn)<th1)
+		{
+		if (fabs(yn) < th2)
+			{
+			xn *= c1;
+			yn *= c1;
+			}
+		else
+			{
+			if (xn < 0) return 0;
+			else return c2;
+			}
+		}
+	d = xn / yn;
+	if (d == std::numeric_limits<double>::infinity())
+		return d;
+	else if (d == -std::numeric_limits<double>::infinity())
+		return -(std::numeric_limits<double>::max());
+	twoproduct(d, yn, r, r2);
+	if (r < xn || (r == xn) && r2 < 0)
+		return succ(d);
+	return d;
+	}
+
+inline double div_down(const double &x, const double &y)
+	{
+	double r, r2;
+	double xn, yn, d;
+	static const double th1 = ldexp(1.0, -969);
+	static const double th2 = ldexp(1.0, 918);
+	static const double c1 = ldexp(1.0, 105);
+	static const double c2 = ldexp(1.0, -1074);
+	if (x == 0 || y == 0 || fabs(x) == std::numeric_limits<double>::infinity() ||
+		fabs(y) == std::numeric_limits<double>::infinity() || x != x || y != y)
+		return x / y;
+	if (y < 0)
+		{
+		xn = -x;
+		yn = -y;
+		}
+	else
+		{
+		xn = x;
+		yn = y;
+		}
+	if (fabs(xn)<th1)
+		{
+		if (fabs(yn) < th2)
+			{
+			xn *= c1;
+			yn *= c1;
+			}
+		else
+			{
+			if (xn < 0) return -c2;
+			else return 0;
+			}
+		}
+	d = xn / yn;
+	if (d == std::numeric_limits<double>::infinity())
+		return std::numeric_limits<double>::max();
+	else if (d == -std::numeric_limits<double>::infinity())
+		return d;
+	twoproduct(d, yn, r, r2);
+	if (r > xn || (r == xn) && r2 > 0)
+		return pred(d);
+	return d;
+	}
+
+inline double sqrt_up(const double &x)
+	{
+	double r, r2, d;
+	static const double th1 = ldexp(1.0, -969);
+	static const double c1 = ldexp(1.0, 106);
+	static const double c2 = ldexp(1.0, 53);
+	d = sqrt(x);
+	if (x < th1)
+		{
+		double d2, x2;
+		x2 = x*c1;
+		d2 = d*c2;
+		twoproduct(d2, d2, r, r2);
+		if (r < x2 || (r == x2) && r2 < 0)
+			return succ(d);
+		return d;
+		}
+	twoproduct(d, d, r, r2);
+	if (r < x || (r == x) && r2 < 0)
+		return succ(d);
+	return d;
+	}
+
+inline double sqrt_down(const double &x)
+	{
+	double r, r2, d;
+	static const double th1 = ldexp(1.0, -969);
+	static const double c1 = ldexp(1.0, 106);
+	static const double c2 = ldexp(1.0, 53);
+	d = sqrt(x);
+	if (x < th1)
+		{
+		double d2, x2;
+		x2 = x*c1;
+		d2 = d*c2;
+		twoproduct(d2, d2, r, r2);
+		if (r > x2 || (r == x2) && r2 > 0)
+			return pred(d);
+		return d;
+		}
+	twoproduct(d, d, r, r2);
+	if (r > x || (r == x) && r2 > 0)
+		return pred(d);
+	return d;
+	}
+
+//////////////////////////////////////////////////////////////////////////
+//
+// END Low Level Interval arithmetic
+//
+//////////////////////////////////////////////////////////////////////////
 #endif

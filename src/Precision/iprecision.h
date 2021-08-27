@@ -5,14 +5,14 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2002-2019
+ *                       Copyright (c) 2002-2021
  *                       Henrik Vestermark
  *                       Denmark
  *
  *                       All Rights Reserved
  *
  *   This source file is subject to the terms and conditions of the
- *   Future Team Software License Agreement which restricts the manner
+ *   Henrik Vestermark Software License Agreement which restricts the manner
  *   in which it may be used.
  *   Mail: hve@hvks.com
  *
@@ -90,19 +90,28 @@
  * 02.00	HVE/SEP-11-2019 New internal class layout with version switch to 2.0
  * 02.01	HVE/17-Sep-2019	Further optmization of the code. _int_precision_atoi() has been added and additional parameter that returns the sign of the string
  * 02.02	HVE/18-SEP-2019 _int_precision_uadd() has been speeded up using fewer std::string copies of variables.
+ * 02.03	HVE/10-Jan-2020	Corrected the extern declaration of int_precisioin_ctrl
+ * 02.04	HVE/12-Aug-2020	Change precision type from unsinged int to size_t to enable both 32 and 64b it target.
+ * 02.05	HVE/01-Oct-2020	Change uint64_t to unsinged long long and int64_t to long long. 
+ *							Also added support for implicit operators for long long and unsigned long long in conversion from Int_precision and initialization with an
+ *							long long and unsigned long long type. All 64bit
+ * 02.06	HVE/04-Oct-2020	Fixed an issue in the conversion operator for long and long long c-types
+ * 02.07	HVE/24-Mar-2021 Updated license info
+ * 02.08	HVE/5-Jul-2021	Replaced all deprecreated headers with current ones
  *
  * End of Change Record
  * --------------------------------------------------------------------------
 */
 
 /* define version string */
-static char _VI_[] = "@(#)iprecision.h 02.02 -- Copyright (C) Henrik Vestermark";
+static char _VI_[] = "@(#)iprecision.h 02.08 -- Copyright (C) Henrik Vestermark";
 
 // If _INT_PRECESION_FAST_DIV_REM is defined it will use a magnitude faster div and rem integer operation.
 #define _INT_PRECISSION_FAST_DIV_REM
 
-#include <limits.h>
-#include <stdint.h>
+#include <climits>
+#include <cstdint>
+#include <cstring>
 #include <string>
 #include <complex>   // Need <complex> to support FFT functions for fast multiplications
 
@@ -113,9 +122,6 @@ static char _VI_[] = "@(#)iprecision.h 02.02 -- Copyright (C) Henrik Vestermark"
 #include <cstdlib>
 using std::atoi; using std::strtoul;
 // End ANSI addition
-
-#include <stdlib.h>
-#include <string.h>
 
 // RADIX can either be 2, 8, 10, 16 or 256
 static const int BASE_2	  = 2;
@@ -153,7 +159,7 @@ class precision_ctrl {
 	  inline int F_RADIX( int fr )		{ return( mFRadix = fr ); }
       };
 
-extern precision_ctrl precision_ctrl;
+extern class precision_ctrl precision_ctrl;
 
 static const int RADIX = BASE_10;			// Set internal base for the arbitrary precision
 
@@ -245,8 +251,8 @@ std::string _int_precision_atoi( const char *str, int *sign );
 std::string _int_precision_atoi(const std::string &s, int *sign);
 std::string itostring( int, const unsigned );
 std::string ito_precision_string( unsigned long, const bool, const int base = RADIX );
-std::string i64to_precision_string( uint64_t, const bool, const int base = RADIX );
-std::string u64to_precision_string( uint64_t, const int base = RADIX );
+std::string i64to_precision_string( unsigned long long, const bool, const int base = RADIX );
+std::string u64to_precision_string( unsigned long long, const int base = RADIX );
 uint64_t _stringtou64( std::string *, const int );
 
 ///
@@ -282,18 +288,20 @@ class int_precision
       int_precision( unsigned int );		// When initialized through an unsigned int
       int_precision( long );				// When initialized through an long
       int_precision( unsigned long );		// When initialized through an unsigned long
+	  int_precision( long long);			// When initialized through an long
+	  int_precision( unsigned long long);	// When initialized through an unsigned long
       int_precision( const char * );		// When initialized through a char string
 	  int_precision( const std::string&  );	// When initialized through a std::string
-	  int_precision( const int64_t );		// When initialized through a 64 bit int
-	  int_precision( const uint64_t );		// When initialized through a 64 bit unsigned int
-  	  int_precision( const int_precision& s ) : mNumber(s.mNumber), mSign(s.mSign) {}  // When initialized through another int_precision
+	//  int_precision( const int64_t );		// When initialized through a 64 bit int
+	//  int_precision( const uint64_t );		// When initialized through a 64 bit unsigned int
+  	  int_precision( const int_precision& s ) : mSign(s.mSign), mNumber(s.mNumber) {}  // When initialized through another int_precision
 
       // Coordinate functions
 	  std::string copy(size_t pos = 0, size_t len = std::string::npos) const {return mNumber.substr(pos,len); }  // Same as the string.substr()
       std::string *pointer()		{ return &mNumber; }
       int sign() const				{ return mSign; }
       int change_sign()				{ mSign *= -1;  return mSign; }		// Toggle and return sign 
-      unsigned int size() const		{ return mNumber.length(); }		// Return number of digits
+      size_t size() const			{ return mNumber.length(); }		// Return number of digits
 	  bool even() const				{ return (IDIGIT(mNumber[mNumber.length() - 1]) & 0x1) ? false : true; }
 	  bool odd() const				{ return (IDIGIT(mNumber[mNumber.length() - 1]) & 0x1) ? true : false; }
 	  int_precision& abs()			{ mSign = 1; return *this; }		// Change sign to + and return number
@@ -312,6 +320,8 @@ class int_precision
       operator unsigned char() const;
       operator double() const;
       operator float() const;
+	  operator long long() const;
+	  operator unsigned long long() const;
 
       // Essential operators
       int_precision& operator=( const int_precision& );
@@ -585,6 +595,50 @@ inline int_precision::int_precision( unsigned long i )
    }
 
 ///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  1/Oct/2020
+///	@brief 	int_precision::int_precision
+///	@return 	nothing
+///	@param   "i"	-	the binary long long to convert to multi precision number
+///
+///	@todo
+///
+/// Description:
+///   Constructor
+///   Validate and initialize with an integer
+///   Just convert integer to string representation in BASE RADIX
+///   The input integer is always BASE_10
+///   Only use core base functions to create multi precision numbers
+//
+inline int_precision::int_precision(long long i)
+	{
+	mNumber = i64to_precision_string((uint64_t)i, true);
+	mSign = CHAR_SIGN(mNumber[0]);			// Get Sign
+	mNumber.erase(0, 1);					// Remove sign
+	}
+
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  1/)ct/2020
+///	@brief 	int_precision::int_precision
+///	@return 	nothing
+///	@param   "i"	-	the binary unsigned long long to convert to multi precision number
+///
+///	@todo
+///
+/// Description:
+///   Constructor
+///   Validate and initialize with an integer
+///   Just convert integer to string representation in BASE RADIX
+///   The input integer is always BASE_10
+///   Only use core base functions to create multi precision numbers
+//
+inline int_precision::int_precision(unsigned long long i)
+	{
+	mNumber = u64to_precision_string(i);
+	mSign = +1;			// Unsigned is always positive
+	}
+
+///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  11/7/2016
 ///	@brief 	int_precision::int_precision
 ///	@return 	nothing
@@ -599,13 +653,14 @@ inline int_precision::int_precision( unsigned long i )
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
+/*
 inline int_precision::int_precision( int64_t i)
 	{
 	mNumber = i64to_precision_string( (uint64_t)i, true);
 	mSign = CHAR_SIGN(mNumber[0]);			// Get Sign
 	mNumber.erase(0,1);						// Remove sign
 	}
-
+*/
 
 ///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  11/7/2016
@@ -622,11 +677,13 @@ inline int_precision::int_precision( int64_t i)
 ///   The input integer is always BASE_10
 ///   Only use core base functions to create multi precision numbers
 //
+/*
 inline int_precision::int_precision( uint64_t i)
 	{
 	mNumber = u64to_precision_string( i );
 	mSign = +1;			// Unsigned is always positive
 	}
+*/
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -635,6 +692,45 @@ inline int_precision::int_precision( uint64_t i)
 //
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  1/Oct/2020
+///	@brief 			int_precision::operator long long
+///	@return 			inline	-
+///
+///	@todo
+///
+/// Description:
+///   This is the main operator from int_precision to regular long, int, short & char
+///   Any explicit or implicit copnversion first convert to standard c long type and then to any other
+///   inbuild type int, short, char. As a type long >= int >= short >= char
+///   As with regular C type conversion the conversion truncate to desired type and a possible
+///   loss in precision is possible
+///
+inline int_precision::operator long long() const
+	{// Conversion to long long
+	long long l; 
+	std::string s; 
+	
+	if (RADIX == BASE_10)
+		{
+		if (mSign < 0)
+			s = '-' + mNumber;
+		else
+			s = mNumber;
+		}
+	else
+		{ // Need to convert from RADIX to BASE_10 )
+		if(mSign < 0)
+			s = '-' + _int_precision_itoa(&mNumber);
+		else 
+			s= _int_precision_itoa(&mNumber);
+		}
+
+	l = atoll(s.c_str()); // Do it directly
+
+	return l;
+	}
 
 ///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  2/17/2006
@@ -653,11 +749,24 @@ inline int_precision::int_precision( uint64_t i)
 inline int_precision::operator long() const
    {// Conversion to long
    long l;
-   if( RADIX == BASE_10 )
-      l = atoi( mNumber.c_str() ); // Do it directly
+   std::string s;
+
+   if (RADIX == BASE_10)
+	  {// Do it directlyif( RADIX == BASE_10 )
+	  if (mSign < 0)
+		   s = '-' + mNumber;
+	  else
+		   s = mNumber;
+	  }
    else
-      l = atoi( _int_precision_itoa( &mNumber ).c_str() ); // Need to convert from RADIX to BASE_10 )
-   l *= mSign;
+	  { // Need to convert from RADIX to BASE_10 )
+	  if (mSign < 0)
+		   s = '-' + _int_precision_itoa(&mNumber);
+	  else
+		   s = _int_precision_itoa(&mNumber);
+      }
+
+   l = atoi(s.c_str()); 
    return l;
    }
 
@@ -714,6 +823,29 @@ inline int_precision::operator char() const
 
 ///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  2/17/2006
+///	@brief 			int_precision::operator unsigned long long
+///	@return 			inline	-
+///
+///	@todo  Add to do things
+///
+/// Description:
+///   Any explicit or implicit copnversion first convert to standard c long type and then to int
+///   As with regular C type conversion the conversion truncate to desired type and a possible
+///   loss in precision is possible
+///
+inline int_precision::operator unsigned long long() const
+	{// Conversion to unsigned long long
+	unsigned long long ul;
+	if (RADIX == BASE_10)
+		ul = strtoull(mNumber.c_str(), NULL, BASE_10); // Do it directly
+	else
+		ul = strtoull(_int_precision_itoa(&mNumber).c_str(), NULL, BASE_10); // Need to convert from RADIX to BASE_10 )
+	ul *= mSign;
+	return ul;
+	}
+
+///	@author Henrik Vestermark (hve@hvks.com)
+///	@date  2/17/2006
 ///	@brief 			int_precision::operator unsigned long
 ///	@return 			inline	-
 ///
@@ -734,6 +866,7 @@ inline int_precision::operator unsigned long() const
 	ul *= mSign;
 	return ul;
 	}
+
 
 ///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  2/17/2006
@@ -971,7 +1104,7 @@ inline int_precision& int_precision::operator*=( const int_precision& a )
 	{
 //	int sign1, sign2;
 //	std::string s, s1, s2;
-	int length; 
+	size_t length; 
 
 	// extract sign and unsigned portion of number
 //	sign2 = a.mSign;
@@ -987,7 +1120,7 @@ inline int_precision& int_precision::operator*=( const int_precision& a )
 		if (a.mNumber.length() == 1)
 			mNumber = _int_precision_umul_short( &mNumber, IDIGIT(a.mNumber[0]));
 		else  // Check for multiplication of of number that can safely be done using 64bit binary multiplication
-			if (length <= 18 && BASE_10==RADIX ||length<=20 && BASE_8==RADIX || length <=64 && BASE_2==RADIX || length <=8 && BASE_256==RADIX )
+			if ((length <= 18 && BASE_10==RADIX) ||(length<=20 && BASE_8==RADIX) || (length <=64 && BASE_2==RADIX) || (length <=8 && BASE_256==RADIX ))
 				mNumber = _int_precision_umul64( &mNumber, (std::string *)&a.mNumber);
 			else // Use FFT for multiplication
 				mNumber =_int_precision_umul_fourier( &mNumber, (std::string *)&a.mNumber );
@@ -1047,8 +1180,8 @@ inline int_precision& int_precision::operator/=( const int_precision& a )
 	//int sign1, sign2;
 	unsigned int wrap;
 	//std::string s1, s2;
-	unsigned length = this->size(); if (length < a.size()) length = a.size(); // Max number of digits for nominator and denominator 
-	bool binarydiv = (length <= 18 && BASE_10 == RADIX || length <= 20 && BASE_8 == RADIX || length <= 64 && BASE_2 == RADIX || length <= 8 && BASE_256 == RADIX) ? true : false;
+	size_t length = this->size(); if (length < a.size()) length = a.size(); // Max number of digits for nominator and denominator 
+	bool binarydiv = ((length <= 18 && BASE_10 == RADIX) || (length <= 20 && BASE_8 == RADIX) || (length <= 64 && BASE_2 == RADIX) || (length <= 8 && BASE_256 == RADIX)) ? true : false;
 	// Check that lhs/rhs canbe handle by 64bit native arithmetic
 
 #ifdef _INT_PRECISSION_FAST_DIV_REM
@@ -1142,8 +1275,8 @@ inline int_precision& int_precision::operator/=(const int_precision& a)
 inline int_precision& int_precision::operator%=( const int_precision& a )
 	{
 	//std::string s1, s2;
-	unsigned length = this->size(); if (length < a.size()) length = a.size(); --length; // Max number of digits for nominator and denominator excluding the sign
-	bool binaryrem = (length <= 18 && BASE_10 == RADIX || length <= 20 && BASE_8 == RADIX || length <= 64 && BASE_2 == RADIX || length <= 8 && BASE_256 == RADIX) ? true : false;
+	size_t length = this->size(); if (length < a.size()) length = a.size(); --length; // Max number of digits for nominator and denominator excluding the sign
+	bool binaryrem = ((length <= 18 && BASE_10 == RADIX) || (length <= 20 && BASE_8 == RADIX) || (length <= 64 && BASE_2 == RADIX) || (length <= 8 && BASE_256 == RADIX)) ? true : false;
 
 #ifdef _INT_PRECISSION_FAST_DIV_REM
 	if(this->size()>a.size()+8 && a.size() != 2 && binaryrem == false )  // Check that lhs is 8 digit larger and that rhs is not a single digit before do the fastremdiv operation

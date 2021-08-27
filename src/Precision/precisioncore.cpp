@@ -2,14 +2,14 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2007-2019
+ *                       Copyright (c) 2007-2021
  *                       Henrik Vestermark
  *                       Denmark
  *
  *                       All Rights Reserved
  *
  *   This source file is subject to the terms and conditions of the
- *   Future Team Software License Agreement which restricts the manner
+ *   Henrik Vestermark Software License Agreement which restricts the manner
  *   in which it may be used.
  *   Mail: hve@hvks.com
  *
@@ -89,25 +89,32 @@
  *							Also Added std::string _int_precision_udiv64(string *src1, string *src2 ) to utilized binary division for performance improvement
  * 02.01	HVE/16-SEP-2019	The initial guess for 1/v a d sqrt has been speed up particular for large floating points numbers 
  * 02.02	HVE/17-SEP-2019	_int_precision_atoi() has been speed up by avoiding conversion when RADIX == the BASE representation of the number
+ * 02.03	HVE/10-Aug-2020	replace the code for modf() with a more efficient version
+ * 02.04	HVE/12-Aug-2020	Change precision type from unsinged int to size_t to enable both 32 and 64bit target. 
+ * 02.05	HVE/01-Oct-2020	Change uint64_t to unsinged long long and int64_t to long long
+ * 02.06	HVE/18-Mar-2021 Replace most string.insert()=> string.push_back() and then a reverse(string.begin(),string.end()) at the end of the function. This gives a significant 
+ *							performance improvement for large digits. Bug in _float_precision_ftoainteger() where the sign was missing from the result has been fixed.
+ *							Optimized the use of the string.erase() calls
+ * 02.07	HVE/22-Mar-2021 Fix a bug in _int_precision_atoi() that was introduce when sign was moving out of the mNumber string. 
+ * 02.08	HVE/4-Jul-2021	Fixed an bug in umul_fourier where a variable was not initialized
+ * 02.09	HVE/5-Jul-2021	Replaced all deprecreated headers with current ones. Fixed a bug in floor() and ceil() where exponent was handle as unsigned instead of signed
+ * 02.10	HVE/29-Jul-2021	minor cosmetics changes making the code more portable to other environments
  *
  * End of Change Record
  * --------------------------------------------------------------------------
 */
 
 /* define version string */
-static char _VIP_[] = "@(#)precisioncore.cpp 02.02 -- Copyright (C) Henrik Vestermark";
+static char _VIP_[] = "@(#)precisioncore.cpp 02.09 -- Copyright (C) Henrik Vestermark";
 
-// This is the standard Microsoft precompiled header file.
-// Please create an empty file if you are not compiling under Microsoft visual studio
-//#include "stdafx.h"
-
-#include <stdint.h>
-#include <time.h>
+#include <cstdint>
+#include <ctime>
 #include <cmath> 
 #include <iostream>
 #include <iomanip>
-#include <string.h>
+#include <cstring>
 #include <vector>
+#include <omp.h>
 
 using namespace std;
 
@@ -234,14 +241,13 @@ std::string _int_precision_itoa( int_precision *a )
 ///   Reverse binary permute
 ///   n must be a power of 2
 //
-static void _int_reverse_binary( std::complex<double> data[], unsigned int n )
+static void _int_reverse_binary( std::complex<double> data[], const size_t n )
    {
-   unsigned int i, j, m;
+   size_t i, j, m;
 
    if( n <=2 ) return;
 
-   j = 1;
-   for( i = 1; i < n; i++ )
+   for( j=1, i=1; i < n; i++ )
       {
       if( j > i ) 
          std::swap( data[ j - 1 ], data[ i - 1 ] );
@@ -272,11 +278,11 @@ static void _int_reverse_binary( std::complex<double> data[], unsigned int n )
 ///   a=2sin^2(o/2), b=sin(o)
 ///   n must be a power of 2
 //
-static void _int_fourier( std::complex<double> data[], unsigned int n, int isign )
+static void _int_fourier( std::complex<double> data[], const size_t n, const int isign )
    {
    double theta;
    std::complex<double> w, wp;
-   unsigned long mh, m, r, j, i;
+   size_t mh, m, r, j, i;
 
    _int_reverse_binary( data, n );
 
@@ -318,9 +324,9 @@ static void _int_fourier( std::complex<double> data[], unsigned int n, int isign
 ///   Convert n discrete double data into a fourier transform data set
 ///   n must be a power of 2
 //
-void _int_real_fourier( double data[], unsigned int n, int isign )
+void _int_real_fourier( double data[], const size_t n, const int isign )
    {
-   int i;
+   size_t i;
    double theta, c1 = 0.5, c2;
    std::complex<double> w, wp, h1, h2;
 
@@ -337,9 +343,9 @@ void _int_real_fourier( double data[], unsigned int n, int isign )
       }
    wp = std::complex<double>( -2.0 * sin( 0.5 * theta ) * sin( 0.5 * theta ), sin( theta ) );
    w = std::complex<double> ( 1 + wp.real(), wp.imag() );
-   for( i = 1; i < (int)(n>>2); i++ )
+   for( i = 1; i < (n>>2); i++ )
       {
-      int i1, i2, i3, i4;
+      size_t i1, i2, i3, i4;
       std::complex<double> tc;
 
       i1 = i + i;
@@ -387,9 +393,10 @@ void _int_precision_strip_leading_zeros( std::string *s )
    std::string::iterator pos;
 
    // Strip leading zeros
-   for( pos = s->begin(); pos != s->end() && IDIGIT( *pos ) == 0; )
-         s->erase( pos );
-
+   for (pos = s->begin(); pos != s->end() && IDIGIT(*pos) == 0; ++pos) ;	// Find first not zero digit
+     
+   if (s->begin() != pos )
+	 s->erase(s->begin(), pos);
    if( s->empty() )
       *s = ICHARACTER(0);
 
@@ -501,7 +508,6 @@ std::string _int_precision_uadd_short( std::string *src1, unsigned int d )
 
    if( ICARRY( ireg ) != 0 )  // Insert the carry in the front of the number
       des1.insert( (std::string::size_type)0, 1, ICHARACTER( (unsigned char)ICARRY( ireg ) ) );
-
    _int_precision_strip_leading_zeros( &des1 );
 
    return des1;
@@ -591,7 +597,6 @@ std::string _int_precision_usub_short( int *result, std::string *src1, unsigned 
    {
    unsigned short ireg = RADIX;
    std::string::reverse_iterator r1_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
    if( d > (unsigned)RADIX )
@@ -603,19 +608,18 @@ std::string _int_precision_usub_short( int *result, std::string *src1, unsigned 
       return *src1;
       }
 
-   des1.erase();
+   // des1.erase();	// Not needed
    des1.reserve( src1->capacity() );  // Reserver space to avoid time consuming reallocation
-   d_pos = des1.begin();
    r1_pos = src1->rbegin();
 
    ireg = (unsigned short)( RADIX - 1 + IDIGIT( *r1_pos ) - d + ICARRY( ireg ) );
-   d_pos = des1.insert( d_pos, ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
+   des1.push_back( ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
    for( ++r1_pos; ICARRY( ireg ) && r1_pos != src1->rend(); ++r1_pos )
       {
       ireg = (unsigned short)( RADIX - 1 + IDIGIT( *r1_pos ) + ICARRY( ireg ) );
-      d_pos = des1.insert( d_pos, ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
+      des1.push_back( ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
       }
-
+   reverse(des1.begin(), des1.end());
    _int_precision_strip_leading_zeros( &des1 );
    
    *result = ICARRY( ireg ) - 1;
@@ -641,30 +645,28 @@ std::string _int_precision_usub( int *result, std::string *src1, std::string *sr
    {
    unsigned short ireg = RADIX;
    std::string::reverse_iterator r1_pos, r2_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
-   des1.erase();
+   // des1.erase();	// unnecessary
    if( src1->length() > src2->length() )
       des1.reserve( src1->capacity() );  // Reserver space to avoid time consuming reallocation
    else
       des1.reserve( src2->capacity() );  // Reserver space to avoid time consuming reallocation
-   d_pos = des1.begin();
    r1_pos = src1->rbegin();
    r2_pos = src2->rbegin();
 
    for(; r1_pos != src1->rend() || r2_pos != src2->rend();)
       {
       if( r1_pos != src1->rend() && r2_pos != src2->rend() )
-         { ireg = (unsigned short)( RADIX - 1 + IDIGIT( *r1_pos ) - IDIGIT( *r2_pos ) + ICARRY( ireg ) ); ++r1_pos, ++r2_pos; }
+         { ireg = (unsigned short)( RADIX - 1 + IDIGIT( *r1_pos ) - IDIGIT( *r2_pos ) + ICARRY( ireg ) ); ++r1_pos; ++r2_pos; }
       else
          if( r1_pos != src1->rend() )
             { ireg = (unsigned short)( RADIX - 1 + IDIGIT( *r1_pos ) + ICARRY( ireg ) ); ++r1_pos; }
          else
             { ireg = (unsigned short)( RADIX - 1 - IDIGIT( *r2_pos ) + ICARRY( ireg ) ); ++r2_pos; }
-      d_pos = des1.insert( d_pos, ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
+      des1.push_back( ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
       }
-
+   reverse(des1.begin(), des1.end());
    _int_precision_strip_leading_zeros( &des1 );
    
    *result = ICARRY( ireg ) - 1;
@@ -693,7 +695,6 @@ std::string _int_precision_umul_short( std::string *src1, unsigned int d )
    {
    unsigned short ireg = 0;
    std::string::reverse_iterator r1_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
    if( d > (unsigned)RADIX )
@@ -701,7 +702,7 @@ std::string _int_precision_umul_short( std::string *src1, unsigned int d )
 
    if( d == 0 )  // Multiply by zero is zero.
       {
-      des1.insert( (std::string::size_type)0, 1, ( ICHARACTER(0) ) );
+      des1.push_back( ( ICHARACTER(0) ) );
       return des1;
       }
 
@@ -720,20 +721,19 @@ std::string _int_precision_umul_short( std::string *src1, unsigned int d )
       return des1;
       }
 
-   des1.erase();
+  // des1.erase();   // not needed
    des1.reserve( src1->capacity() );  // Reserver space to avoid time consuming reallocation   
-   d_pos = des1.begin();
    r1_pos = src1->rbegin();
    
    for(; r1_pos != src1->rend(); ++r1_pos )
       {
       ireg = (unsigned short)( IDIGIT( *r1_pos ) * d + ICARRY( ireg ) );
-      d_pos = des1.insert( d_pos, ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
+      des1.push_back( ICHARACTER( (unsigned char)ISINGLE( ireg ) ) );
       }
-
+ 
    if( ICARRY( ireg ) != 0 )
-      d_pos = des1.insert( d_pos, ICHARACTER( (unsigned char)ICARRY( ireg ) ) );
-
+      des1.push_back( ICHARACTER( (unsigned char)ICARRY( ireg ) ) );
+   reverse(des1.begin(), des1.end());
    _int_precision_strip_leading_zeros( &des1 );
 
    return des1;
@@ -791,8 +791,8 @@ std::string _int_precision_umul( std::string *src1, std::string *src2 )
 //
 std::string _int_precision_umul64(std::string *src1, std::string *src2)
 	{
-	uint64_t a = _stringtou64(src1, RADIX);
-	uint64_t b = _stringtou64(src2, RADIX);
+	unsigned long long a = _stringtou64(src1, RADIX);
+	unsigned long long b = _stringtou64(src2, RADIX);
 	a *= b;
 	return u64to_precision_string(a, RADIX);
 	}
@@ -815,13 +815,14 @@ string _int_precision_karatsuba_umul(const std::string *lhs, const std::string *
 	{
 	std::string result, z0, z1, z2, z3;
 	std::string lhs0, lhs1, rhs0, rhs1;
+	std::string l01, r01, z01;
 	int wrap;
-	unsigned int half_length, length, l_length = lhs->size(), r_length = rhs->size(), tot_len;
+	size_t half_length, length, l_length = lhs->size(), r_length = rhs->size(), tot_len;
 	length = l_length;
 	if (length < r_length)
 		length = r_length;
 	tot_len = l_length + r_length;
-	if (RADIX == BASE_10 && tot_len <= 18 || RADIX == BASE_256 && tot_len <= 8 || RADIX == BASE_8 && tot_len <= 20 || RADIX == BASE_2 && tot_len <= 64)  // If max digits in lhs & rhs less than fit into a 32 bit integer then do it the binary way
+	if (( RADIX == BASE_10 && tot_len <= 18 ) || ( RADIX == BASE_256 && tot_len <= 8 ) || ( RADIX == BASE_8 && tot_len <= 20 ) || ( RADIX == BASE_2 && tot_len <= 64 ) )  // If max digits in lhs & rhs less than fit into a 32 bit integer then do it the binary way
 		{
 		result = _int_precision_umul64((std::string *)lhs, (std::string *)rhs);
 		return result;
@@ -835,7 +836,7 @@ string _int_precision_karatsuba_umul(const std::string *lhs, const std::string *
 		}
 	else if (l_length < length)
 		{
-		int tmp_length = half_length - (length - l_length);
+		size_t tmp_length = half_length - (length - l_length);
 		if (tmp_length == 0) lhs0.insert(0, 1, ICHARACTER(0)); else lhs0 = lhs->substr(0, tmp_length); lhs1 = lhs->substr(tmp_length);
 		}
 	else
@@ -848,7 +849,7 @@ string _int_precision_karatsuba_umul(const std::string *lhs, const std::string *
 		}
 	else if (r_length < length)
 		{
-		int tmp_length = half_length - (length - r_length);
+		size_t tmp_length = half_length - (length - r_length);
 		if (tmp_length == 0) rhs0.insert(0, 1, ICHARACTER(0)); else rhs0 = rhs->substr(0, tmp_length); rhs1 = rhs->substr(tmp_length);
 		}
 	else
@@ -857,15 +858,27 @@ string _int_precision_karatsuba_umul(const std::string *lhs, const std::string *
 		}
 
 	// Evaluation
-	z0 = _int_precision_karatsuba_umul(&lhs0, &rhs0);
-	z1 = _int_precision_karatsuba_umul(&lhs1, &rhs1);
-	z2 = _int_precision_karatsuba_umul(&_int_precision_uadd(&lhs0, &lhs1), &_int_precision_uadd(&rhs0, &rhs1));
-	z3 = _int_precision_usub(&wrap, &z2, &_int_precision_uadd(&z0, &z1));
+//#pragma omp parallel sections
+	{
+//#pragma omp section
+		{z0 = _int_precision_karatsuba_umul(&lhs0, &rhs0); }
+//#pragma omp section
+		{z1 = _int_precision_karatsuba_umul(&lhs1, &rhs1); }
+//#pragma omp section
+		{
+		l01 = _int_precision_uadd(&lhs0, &lhs1);
+		r01 = _int_precision_uadd(&rhs0, &rhs1);
+		z2 = _int_precision_karatsuba_umul(&l01, &r01);
+		}
+	}
+	z01 = _int_precision_uadd(&z0, &z1);
+	z3 = _int_precision_usub(&wrap, &z2, &z01);
 
 	// Recomposition
 	z0.append(2 * (length - half_length), ICHARACTER(0));
 	z3.append(length - half_length, ICHARACTER(0));
-	result = _int_precision_uadd(&_int_precision_uadd(&z0, &z1), &z3);
+	z01 = _int_precision_uadd(&z0, &z1);
+	result = _int_precision_uadd(&z01, &z3);
 	return result;
 	}
 
@@ -886,18 +899,18 @@ std::string _int_precision_schonhage_strassen_linear_umul(const std::string *lhs
 	{
 	std::string l;
 	unsigned int i, j;
-	unsigned int length, l_length = lhs->size(), r_length = rhs->size();
-	std::vector<unsigned int> linearconvolution(l_length + r_length - 1);
+	size_t length, l_length = lhs->size(), r_length = rhs->size();
+	std::vector<unsigned int> linearconvolution(l_length + r_length - 1,0);  // initialize it with zero
 	length = l_length + r_length;
 
 	// Small enough argument to do it directly using native multiplication
-	if (RADIX == BASE_10 && length <= 18 || RADIX == BASE_256 && length <= 8 || RADIX == BASE_8 && length <= 20 || RADIX == BASE_2 && length <= 64)  // If max digits in lhs & rhs less than fit into a 32 bit integer then do it the binary way
+	if (( RADIX == BASE_10 && length <= 18 ) || ( RADIX == BASE_256 && length <= 8 ) || ( RADIX == BASE_8 && length <= 20 ) || ( RADIX == BASE_2 && length <= 64 ) )  // If max digits in lhs & rhs less than fit into a 32 bit integer then do it the binary way
 		{
 		return _int_precision_umul64((std::string *)lhs, (std::string *)rhs);
 		}
 
-	for (i = 0; i < length - 1; ++i)
-		linearconvolution[i] = 0;
+	//for (i = 0; i < length - 1; ++i)
+	//	linearconvolution[i] = 0;
 
 	for (i = 0; i < r_length; ++i)
 		for (j = 0; j < l_length; ++j)
@@ -910,15 +923,17 @@ std::string _int_precision_schonhage_strassen_linear_umul(const std::string *lhs
 	for (i = 0; i < length - 1; i++)
 		{
 		linearconvolution[i] += nextCarry;
-		l.insert(0, 1, ICHARACTER(linearconvolution[i] % RADIX));
+		l.push_back(ICHARACTER((char)( linearconvolution[i] % RADIX ) ) );
 		nextCarry = linearconvolution[i] / RADIX;
 		}
 	if (nextCarry != 0)
-		l.insert(0, 1, ICHARACTER(nextCarry));
+		l.push_back( ICHARACTER((char)nextCarry) );
+	reverse(l.begin(), l.end());
 
 	return l;
 	}
 
+double xxxtime=0, xxxbest = 10000000, xxxworst = 0, xxxtot = 0, xxxno= 0;
 
 ///	@author Henrik Vestermark (hve@hvks.com)
 ///	@date  1/14/2005
@@ -938,38 +953,67 @@ std::string _int_precision_umul_fourier( std::string *src1, std::string *src2 )
    unsigned short ireg = 0;
    std::string des1;
    std::string::iterator pos;
-   unsigned int n, l, l1, l2;
-   int j;
+   size_t n, l, l1, l2, j;
    double *a, *b, cy;
    
    l1 = src1->length();
    l2 = src2->length();
+   des1.reserve(l1 + l2 + 16);  // Ensure enough space to hold the Multiplication result to avoid reallocation of des1
    l = l1 < l2 ? l2 : l1;
    for( n = 1; n < l; n <<= 1 ) ;
    n <<= 1;
-   a = new double [n];
-   b = new double [n];
-   for( l=0, pos = src1->begin(); pos != src1->end(); ++pos ) a[l++] = (double)IDIGIT(*pos);
-   for( ; l < n; ) a[l++] = (double)0;
-   for( l=0, pos = src2->begin(); pos != src2->end(); ++pos ) b[l++] = (double)IDIGIT(*pos);
-   for( ; l < n; ) b[l++] = (double)0;
-   _int_real_fourier( a, n, 1 );
-   _int_real_fourier( b, n, 1 );
+   a = new double[n];
+   b = new double[n];
+
+   // Even that the 4 for loop can been parallelized it is not worth it due to openMP overhead
+   for( l=0, pos = src1->begin(); pos != src1->end(); ++pos ) 
+	   a[l++] = (double)IDIGIT(*pos);
+   for( ; l < n; ) 
+	   a[l++] = (double)0;
+   for( l=0, pos = src2->begin(); pos != src2->end(); ++pos )
+	   b[l++] = (double)IDIGIT(*pos);
+   for( ; l < n; ) 
+	   b[l++] = (double)0;
+   xxxtime = omp_get_wtime();
+   // Using parallel sections below speeds up the performance of the two calls to _int_real_Fourier() with a factor of 1.8 
+#if true
+#pragma omp parallel sections firstprivate(a,b,n)
+   {
+#pragma omp section 
+	   {
+	   _int_real_fourier(a, n, 1);
+	   }
+#pragma omp section
+	   {
+	   _int_real_fourier(b, n, 1);
+	   }
+   } 
+ #else
+   _int_real_fourier(a, n, 1);
+   _int_real_fourier(b, n, 1);
+#endif
+
+   xxxtime = omp_get_wtime() - xxxtime;
+   xxxbest = std::min(xxxtime, xxxbest);
+   xxxworst = std::max(xxxtime, xxxworst);
+   xxxtot += xxxtime;
+   xxxno++;
+
    b[0] *= a[0];
    b[1] *= a[1];
-   for( j = 2; j < (int)n; j += 2 )
+   for( j = 2; j < n; j += 2 )
       {
       double t;
       b[j]=(t=b[j])*a[j]-b[j+1]*a[j+1];
       b[j+1]=t*a[j+1]+b[j+1]*a[j];
       }
    _int_real_fourier( b, n, -1 );
-   for( cy=0, j=n-1; j >= 0; j-- )
+   for( cy=0, j=0; j <= n-1; ++j )
       {
       double t;
-      t=b[j]/(n>>1)+cy+0.5;
-      cy=(unsigned long)( t/ RADIX );
-      b[j]=t-cy*RADIX;
+      t=b[n-1-j]/(n>>1)+cy+0.5;
+      cy=(unsigned long)( t/RADIX );
+      b[n-1-j]=t-cy*RADIX;
       }
 
    ireg = (unsigned short)cy;
@@ -980,8 +1024,7 @@ std::string _int_precision_umul_fourier( std::string *src1, std::string *src2 )
    
    _int_precision_strip_leading_zeros( &des1 );
 
-   delete [] a;
-   delete [] b;
+   delete [] a, b;
 
    return des1;
    }
@@ -1066,8 +1109,8 @@ std::string _int_precision_udiv_short( unsigned int *remaind, std::string *src1,
 //
 std::string _int_precision_udiv64(std::string *src1, std::string *src2)
 	{
-	uint64_t a = _stringtou64(src1, RADIX);
-	uint64_t b = _stringtou64(src2, RADIX);
+	unsigned long long a = _stringtou64(src1, RADIX);
+	unsigned long long b = _stringtou64(src2, RADIX);
 	a /= b;
 	return u64to_precision_string(a, RADIX);
 	}
@@ -1228,8 +1271,8 @@ std::string _int_precision_urem_short(std::string *src1, unsigned int d)
 //
 std::string _int_precision_urem64(std::string *src1, std::string *src2)
 	{
-	uint64_t a = _stringtou64(src1, RADIX);
-	uint64_t b = _stringtou64(src2, RADIX);
+	unsigned long long a = _stringtou64(src1, RADIX);
+	unsigned long long b = _stringtou64(src2, RADIX);
 	a %= b;
 	return u64to_precision_string(a, RADIX);
 	}
@@ -1400,7 +1443,8 @@ std::string ito_precision_string( unsigned long i, const bool sg, const int base
    else
       {// All other Bases
       for( ; i != 0; i /= base )
-         number.insert( (std::string::size_type)0, 1, base <= 10 ? (unsigned char)( i % base + '0') : (unsigned char)(i % base) );
+         number.push_back( base <= 10 ? (unsigned char)( i % base + '0') : (unsigned char)(i % base) );
+	  reverse(number.begin(), number.end());
       }
 
    number = SIGN_STRING( sign ) + number;
@@ -1423,7 +1467,7 @@ std::string ito_precision_string( unsigned long i, const bool sg, const int base
 ///		return RADIX <= 10 ? (unsigned char)( x + '0') : (unsigned char)x; 
 ///		Please note that most conformant C compiler since 1999 will accept the 64bit integer
 ///		this is equivalent code with ito_precision_string() above
-std::string i64to_precision_string( uint64_t i, const bool sg, const int base)
+std::string i64to_precision_string( unsigned long long i, const bool sg, const int base)
 	{
 	int sign = 1;
 	std::string number;
@@ -1435,9 +1479,9 @@ std::string i64to_precision_string( uint64_t i, const bool sg, const int base)
 		return number;
 		}
 
-	if (sg == true && (long)i < 0)
+	if (sg == true && (long long)i < 0)
 		{
-		i = -(long)i;
+		i = -(long long)i;
 		sign = -1;
 		}
 
@@ -1455,10 +1499,11 @@ std::string i64to_precision_string( uint64_t i, const bool sg, const int base)
 	else
 		{// All other Bases
 		for (; i != 0; i /= base)
-			number.insert((std::string::size_type)0, 1, base <= 10 ? (unsigned char)(i % base + '0') : (unsigned char)(i % base));
+			number.push_back( base <= 10 ? (unsigned char)(i % base + '0') : (unsigned char)(i % base) );
+		reverse(number.begin(), number.end());
 		}
 
-	number.insert(0,SIGN_STRING(sign) );
+	number = SIGN_STRING(sign) + number;
 	return number;
 	}
 
@@ -1477,7 +1522,7 @@ std::string i64to_precision_string( uint64_t i, const bool sg, const int base)
 ///		return RADIX <= 10 ? (unsigned char)( x + '0') : (unsigned char)x; 
 ///		Please note that most conformant C compiler since 1999 will accept the 64bit integer
 ///		this is equivalent code with ito_precision_string() above
-std::string u64to_precision_string(uint64_t i, const int base)
+std::string u64to_precision_string(unsigned long long i, const int base)
 	{
 	std::string number;
 
@@ -1501,7 +1546,8 @@ std::string u64to_precision_string(uint64_t i, const int base)
 	else
 		{// All other Bases
 		for (; i != 0; i /= base)
-			number.insert((std::string::size_type)0, 1, base <= 10 ? (unsigned char)(i % base + '0') : (unsigned char)(i % base));
+			number.push_back( base <= 10 ? (unsigned char)(i % base + '0') : (unsigned char)(i % base) );
+		reverse(number.begin(), number.end());
 		}
 
 	return number;
@@ -1544,18 +1590,19 @@ std::string itostring( int value, const unsigned radix )
          {
          // Convert to ascii and store
          if( digit < 10 )
-            s.insert( (std::string::size_type)0, 1, (char)ICHARACTER10( (unsigned char)digit ) );      
+            s.push_back( (char)ICHARACTER10( (unsigned char)digit ) );      
          else
-            s.insert( (std::string::size_type)0, 1, (char)( digit - 10 + 'a' ) );      
+            s.push_back( (char)( digit - 10 + 'a' ) );      
          }
       else
          { // Keep it 'binary' not readable string
-         s.insert( (std::string::size_type)0, 1, (unsigned char)digit );      
+         s.push_back( (unsigned char)digit );      
          }
    } while (uvalue > 0);
 
    if( radix == BASE_10 && value < 0 )
-      s.insert( (std::string::size_type)0, 1, '-' );
+      s.push_back( '-' );
+   reverse(s.begin(), s.end());
    return s;
    }
 
@@ -1577,14 +1624,11 @@ std::string _int_precision_itoa( const std::string *a )
    {
    unsigned int rem;
    std::string s, src;
-   std::string c0;
+   std::string c0(1, ICHARACTER(0));
 
-   c0.insert( (std::string::size_type)0, 1, ICHARACTER( 0 ) );
    src = *a;
-   s.erase();
+   // s.erase();  //  not needed
    s.reserve( src.capacity() );
-   //s.append( src, 0, 1 );     // Copy sign
-   //src.erase( src.begin() );  // Erase sign
    if( RADIX == BASE_10 )       // Nothing to convert
       s += src;
    else
@@ -1593,11 +1637,12 @@ std::string _int_precision_itoa( const std::string *a )
             for( ; _int_precision_compare( &src, &c0 ) != 0;  )
                 {
                 src = _int_precision_udiv_short( &rem, &src, BASE_10 );
-				s.insert( (std::string::size_type)1, 1, (char)ICHARACTER10( (unsigned char)rem ) );
-               }
+				s.push_back( (char)ICHARACTER10( (unsigned char)rem ) );
+				}
+			reverse(s.begin(), s.end());
             }
         else
-         { // Convert RADIX 2..9
+			{ // Convert RADIX 2..9
             int number;
             std::string base_10, tmp_rem;
             std::string::iterator pos;
@@ -1614,8 +1659,9 @@ std::string _int_precision_itoa( const std::string *a )
                     number *= RADIX;
                     number += IDIGIT( *pos );
                     }
-				s.insert( (std::string::size_type)1, 1, (char)ICHARACTER10( (unsigned char)number ) );
+				s.push_back( (char)ICHARACTER10( (unsigned char)number ) );
 				}
+			reverse(s.begin(), s.end());
             }
 
    return s;
@@ -1674,6 +1720,7 @@ std::string _int_precision_atoi(const char *str, int *sign)
 	{
 	std::string s(str);
 	std::string::iterator pos;
+	size_t startp = 0;
 	std::string number;
 
 	*sign = +1;
@@ -1681,13 +1728,12 @@ std::string _int_precision_atoi(const char *str, int *sign)
 	if (*pos == '+' || *pos == '-')
 		{
 		*sign = CHAR_SIGN(*pos);
-		++pos;
+		++pos; ++startp;
 		if (pos == s.end())
 			{
 			throw int_precision::bad_int_syntax();
 			}
 		}
-
 	if (*pos == '0') // Octal, binary or hex representation
 		{
 		if (pos + 1 != s.end() && tolower(pos[1]) == 'x')
@@ -1714,7 +1760,7 @@ std::string _int_precision_atoi(const char *str, int *sign)
 						}
 
 			if (RADIX == BASE_16)
-				number = s.substr(2);
+				number = s.substr(startp+2);
 			}
 		else
 			if (pos + 1 != s.end() && tolower(pos[1]) == 'b')
@@ -1729,7 +1775,7 @@ std::string _int_precision_atoi(const char *str, int *sign)
 							number = build_i_number(number, IDIGIT10(*pos), BASE_2);
 
 				if (RADIX == BASE_2)
-					number = s.substr(2);
+					number = s.substr(startp+2);
 				}
 			else
 				{ // Collect octal represenation
@@ -1743,7 +1789,7 @@ std::string _int_precision_atoi(const char *str, int *sign)
 							number = build_i_number(number, IDIGIT10(*pos), BASE_8);
 
 				if (RADIX == BASE_8)
-					number = s.substr(1);
+					number = s.substr(startp+1);
 				}
 		}
 	else
@@ -1758,7 +1804,7 @@ std::string _int_precision_atoi(const char *str, int *sign)
 					number = build_i_number(number, IDIGIT10(*pos), BASE_10);
 
 		if (RADIX == BASE_10)
-			number = s;
+			number = s.substr(startp);
 		}
 
 	if (number.length() == 1 && number[0] == ICHARACTER(0) && *sign == -1 )
@@ -1895,10 +1941,10 @@ std::string _int_precision_atoi( const std::string &s, int *sign)
 /// Convert and unsgined ascii string to a 64bit unsigned int. The acsii string is in base RADIX
 /// It should be called with a unsigned strings. e.g. no sign
 //
-uint64_t _stringtou64( std::string *str, const int base = RADIX)
+unsigned long long _stringtou64( std::string *str, const int base = RADIX)
 	{
 	std::string::iterator pos = str->begin();
-	uint64_t number = 0;
+	unsigned long long number = 0;
 
 	switch (base)
 		{
@@ -2220,7 +2266,7 @@ std::string _float_precision_ftoa( const float_precision *a )
 
    r256.precision( a->precision() );
    r256 = *a;
-   s.erase();
+   // s.erase();   // Not needed
    
    if( F_RADIX != BASE_10 )  // 
       {
@@ -2244,23 +2290,28 @@ std::string _float_precision_ftoa( const float_precision *a )
       else
          {
          std::string::reverse_iterator rpos;
-            std::string c0;
+         std::string c0(1, FCHARACTER(0));
          expo256 = ipart.exponent();
          src = ipart.get_mantissa();
          if( (int)src.length() - 1 <= expo256 )
             src.append( (std::string::size_type)( expo256-src.length()+2 ), FCHARACTER( 0 ) );
          
-         c0.insert( (std::string::size_type)0, 1, FCHARACTER( 0 ) );
-         s.append( src, 0, 1 );     // Copy sign
-         src.erase( src.begin() );  // Erase sign
+        //c0.insert( (std::string::size_type)0, 1, FCHARACTER( 0 ) );
+        // s.append( src, 0, 1 );     // Copy sign
+        // src.erase( src.begin() );  // Erase sign
+		 if (a->sign() < 0)
+			 s = "-";
+		 else
+			 s = "+";
          if( F_RADIX > BASE_10 )
                 {
                 for( ; _float_precision_compare( &src, &c0 ) != 0;  )
                     {
                     src = _float_precision_udiv_short( (unsigned int *)&rem, &src, BASE_10 );
                     _float_precision_strip_leading_zeros( &src );
-                    s.insert( (std::string::size_type)1, 1, (char)FCHARACTER10( (unsigned char)rem ) );  
+                    s.push_back( (char)FCHARACTER10( (unsigned char)rem ) );  
                     }
+				reverse(s.begin()+1, s.end());
                 }
             else
                 {  // Convert F_RADIX 2..9
@@ -2278,8 +2329,9 @@ std::string _float_precision_ftoa( const float_precision *a )
                         number *= F_RADIX;
                         number += FDIGIT( *pos );
                         }
-                    s.insert( (std::string::size_type)1, 1, (char)FCHARACTER10( (unsigned char)number ) ); 
+                    s.push_back( (char)FCHARACTER10( (unsigned char)number ) ); 
                     }
+				reverse(s.begin()+1, s.end());
                 }
          }
       
@@ -2294,24 +2346,24 @@ std::string _float_precision_ftoa( const float_precision *a )
          src = frac.get_mantissa(); 
          for( rem = (int)( (log((double)F_RADIX)/log(10.0)*(r256.precision())+1 ) ); rem > 0; )
             { 
-                int digit, expo_base;
+            int digit, expo_base;
 
             frac *= float_precision( BASE_10 );
             frac = modf( frac, &ipart );
             src = ipart.get_mantissa();
                 
-                if( F_RADIX > BASE_10 )
-                    digit= FDIGIT( (unsigned char)src[1] );
-                else
-                    {// Convert [2..9] number and F_RADIX exponent
-                    expo_base = ipart.exponent()+1;
-                    for( digit = 0, pos = src.begin(), pos++; pos != src.end(); ++pos, expo_base-- )
-                        {
-                        digit *= F_RADIX;
-                        digit += FDIGIT( *pos );
-                        }
-                    for( ; expo_base > 0; expo_base-- ) digit *= F_RADIX;
+            if( F_RADIX > BASE_10 )
+                digit= FDIGIT( (unsigned char)src[1] );
+            else
+                {// Convert [2..9] number and F_RADIX exponent
+                expo_base = ipart.exponent()+1;
+                for( digit = 0, pos = src.begin(), pos++; pos != src.end(); ++pos, expo_base-- )
+                    {
+                    digit *= F_RADIX;
+                    digit += FDIGIT( *pos );
                     }
+                for( ; expo_base > 0; expo_base-- ) digit *= F_RADIX;
+                }
             s.append( (std::string::size_type)1, (char)FCHARACTER10( digit % 10 ) );
             if( frac == float_precision( 0 ) )
                break;
@@ -2347,7 +2399,7 @@ std::string _float_precision_ftoa( const float_precision *a )
                {
                s.erase( nidx, 1 );     // Erase dot
                s.insert( 2, "." );     // and move it to after the first digit
-               expo10 += nidx - 2;     // increase the exponent by number os positions moved
+               expo10 += (int)(nidx - 2);     // increase the exponent by number os positions moved
                }
             }
          }
@@ -2357,7 +2409,7 @@ std::string _float_precision_ftoa( const float_precision *a )
             {
             if( s.length() > 2 )
                {
-               expo10 += s.length() - 2;
+               expo10 += (int)(s.length() - 2);
                s.insert( (std::string::size_type)2, "." );
                }
             }
@@ -2401,7 +2453,7 @@ std::string _float_precision_ftoainteger( const float_precision *a )
    r256.precision( a->precision() );
    ipart.precision( a->precision() );
    r256 = *a;
-   s.erase();
+   // s.erase();	// Not needed
 
    // Convert Integer and fraction part
    (void)modf( r256, &ipart );
@@ -2421,23 +2473,24 @@ std::string _float_precision_ftoainteger( const float_precision *a )
       else
          {
          std::string::reverse_iterator rpos;
-         std::string c0;
+         std::string c0(1, FCHARACTER(0) );
          expo256 = ipart.exponent();
          src = ipart.get_mantissa();
          if( (int)src.length() - 1 <= expo256 )
             src.append( (std::string::size_type)( expo256-src.length()+2 ), FCHARACTER( 0 ) );
-         
-         c0.insert( (std::string::size_type)0, 1, FCHARACTER( 0 ) );
-         s.append( src, 0, 1 );     // Copy sign
-         src.erase( src.begin() );  // Erase sign
+		 if (a->sign() < 0)
+			 s = "-";
+		 else
+			 s = "+";
          if( F_RADIX > BASE_10 )
                 {
                 for( ; _float_precision_compare( &src, &c0 ) != 0;  )
                     {
                     src = _float_precision_udiv_short( (unsigned int *)&rem, &src, BASE_10 );
                     _float_precision_strip_leading_zeros( &src );
-                    s.insert( (std::string::size_type)1, 1, (char)FCHARACTER10( (unsigned char)rem ) );  
+                    s.push_back( (char)FCHARACTER10( (unsigned char)rem ) );  
                     }
+				reverse(s.begin() + 1, s.end());
                 }
             else
                 {  // Convert F_RADIX 2..9
@@ -2455,8 +2508,9 @@ std::string _float_precision_ftoainteger( const float_precision *a )
                         number *= F_RADIX;
                         number += FDIGIT( *pos );
                         }
-                    s.insert( (std::string::size_type)1, 1, (char)FCHARACTER10( (unsigned char)number ) ); 
+                    s.push_back( (char)FCHARACTER10( (unsigned char)number ) ); 
                     }
+				reverse(s.begin() + 1, s.end());
                 }
          }
       }
@@ -2465,6 +2519,10 @@ std::string _float_precision_ftoainteger( const float_precision *a )
      s = ipart.get_mantissa();
      if( (int)(s.length()) <= (int)ipart.exponent() ) 
           s.append( ipart.exponent()-s.length()+1, ICHARACTER(0) ); 
+	 if (a->sign() < 0)
+		 s.insert((std::string::size_type)0,1,'-');
+	 else
+		 s.insert((std::string::size_type)0,1,'+');
      }
 
    return s;
@@ -2485,7 +2543,7 @@ std::string _float_precision_ftoainteger( const float_precision *a )
 ///   Convert float_precision numbers into string (decimal representation)
 //    Constructor for double floating point 
 //
-float_precision _float_precision_dtof( double d, unsigned int p, enum round_mode m )
+float_precision _float_precision_dtof( double d, size_t p, enum round_mode m )
 	{
 	int expo, cp;
 	std::string n, n256;
@@ -2639,11 +2697,18 @@ float_precision _float_precision_dtof( double d, unsigned int p, enum round_mode
 //    The ascii float format is based on standard C notation
 //
 static std::string buildnumber( std::string &number, int digit, int base )
-    {
+{
+	bool test = false;
     if(F_RADIX >= BASE_10)
          {
+		if (number.capacity() < 100)
+			test = true;
          number = _float_precision_umul_short( &number, base );
+		 if (number.capacity() < 100)
+			 test = true;
          number = _float_precision_uadd_short( &number, digit );
+		 if (number.capacity() < 100)
+			 test = true;
          }
     else
         {
@@ -2673,18 +2738,18 @@ static std::string buildnumber( std::string &number, int digit, int base )
 ///   Convert ascii string into a float_precision numbers 
 //    The ascii float format is based on standard C notation
 //
-float_precision _float_precision_atof( const char *str, unsigned int p, enum round_mode m )
+float_precision _float_precision_atof( const char *str, size_t p, enum round_mode m )
    {
    int sign, sign_expo;
    int expo, expo_radix, expo_e;
    int s_digit, f_digit;
-   std::string::size_type nidx, idx;
-   int i;
+   std::string::size_type i, nidx, idx;
    std::string s(str);
    std::string::iterator pos;
    std::string number, fraction, exponent;
    float_precision fp(0,p,m);
    bool ipart, fpart, epart;
+   number.reserve(s.size() + 16);
    expo = 0;
    idx=0;
    ipart=false;
@@ -2712,10 +2777,9 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
             {
             for( pos += 2; pos != s.end(); pos++ )
                if( ( *pos < '0' || *pos > '9' ) && ( tolower( *pos ) < 'a' || tolower( *pos ) > 'f' ) )
-                  {  throw float_precision::bad_int_syntax(); }
+                  { throw float_precision::bad_int_syntax(); }
                else
                   {
-                  //char buf[ 16 ];
                   std::string tmp;
 
                   int hexvalue = *pos - '0';
@@ -2723,26 +2787,36 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
                      hexvalue = tolower( *pos ) - 'a' + 10;
                   tmp = itostring( BASE_16, BASE_10 );
                   number = _float_precision_umul_fourier( &number, &tmp );
-                        tmp = itostring( hexvalue, BASE_10 );
+                  tmp = itostring( hexvalue, BASE_10 );
                   number = _float_precision_uadd( &number, &tmp );
                   }
             }
          else
             { // Collect octal represenation
-            for( ; pos != s.end(); pos++ )
-               if( *pos < '0' || *pos > '7' )
-                  { throw float_precision::bad_int_syntax(); }
-               else
-                    number = buildnumber( number, *pos - '0', BASE_8 );
-               }
+			 for (; pos != s.end(); pos++)
+				{
+				if (*pos < '0' || *pos > '7')
+					{ throw float_precision::bad_int_syntax(); }
+				else
+					if (F_RADIX != BASE_8)
+						 number = buildnumber(number, *pos - '0', BASE_8);
+				}
+			if (F_RADIX == BASE_8)
+				number += s.substr(idx+1);  // Dont copy the '0' character for octal designator
+            }
          }
       else
          { // Collect decimal representation
-         for( ; pos != s.end(); pos++ )
-            if( *pos < '0' || *pos > '9' )
-               {  throw float_precision::bad_int_syntax(); }
-            else
-                number = buildnumber( number , *pos - '0', BASE_10 );
+		  for (; pos != s.end(); pos++)
+			{
+			if (*pos < '0' || *pos > '9')
+				{ throw float_precision::bad_int_syntax(); }
+			else
+				if (F_RADIX != BASE_10)
+					number = buildnumber(number, *pos - '0', BASE_10);
+			}
+		  if(F_RADIX == BASE_10)
+			  number += s.substr(idx);
          }
 
       // This is all integers digits, so exponent is the number of digits
@@ -2750,7 +2824,7 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
       if(number.length()==0)	// Speciel check for 0 since this does not accumulate any number
          expo = 0;
       else
-         expo = number.length() -1;  // Always one digit before the dot
+         expo =(int)( number.length() -1 );  // Always one digit before the dot
       _float_precision_strip_trailing_zeros( &number ); // Get rid of trailing non-significant zeros
       expo += _float_precision_rounding( &number, sign, p, m );
 	  fp.sign(sign);
@@ -2758,48 +2832,59 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
       fp.exponent( expo );
 
       return fp;
-      }
+      } // End of Integer
+   
 
+   // Floating point number starts here
    s_digit = 0;
    f_digit = 0;
    // Pick up significant beteen idx and nidx 
-   if( nidx > idx ) // Number of digits before the . sign or exponent
+   if( nidx > idx ) // Number of digits before the . sign or exponent Ee
       {
       ipart=true;
       // Strip leading zeros
       for( i = idx; i != nidx; i++ ) if( s[i] != '0' ) break;
       // Collect significant
-      for( ; i != nidx; i++ )
-            if( s[i] < '0' || s[i] > '9' )
-               {  throw float_precision::bad_float_syntax(); }
-            else
-               {
-               number = buildnumber( number, s[i] - '0', BASE_10 );
-               s_digit++;  // Significant digits. leading space are not counted
-               }
+	  for (; i != nidx; i++)
+		{
+		if (s[i] < '0' || s[i] > '9')
+		  { throw float_precision::bad_float_syntax(); }
+		else
+			{	
+			if (F_RADIX != BASE_10)
+				buildnumber(number, s[i] - '0', BASE_10);
+			s_digit++;  // Significant digits. leading space are not counted
+			}	
+		}
+	  if (F_RADIX == BASE_10)
+		number += s.substr(idx,s_digit);
       }
 
    // Floating point representation
-   if( s[ nidx ] == '.' ) // Any fraction ?
-      { 
-      idx = nidx + 1;                      // Find start of fraction
-      nidx = s.find_first_of( "eE", idx ); // Find end of fraction
-      if( nidx == std::string::npos )
-         nidx = s.length();
+   if (s[nidx] == '.') // Any fraction ?
+   {
+	   idx = nidx + 1;                      // Find start of fraction
+	   nidx = s.find_first_of("eE", idx); // Find end of fraction
+	   if (nidx == std::string::npos)
+		   nidx = s.length();
 
-      if( idx < nidx )
-         fpart=true;
-      // Remove trailing zero digits
-      for( i = nidx - 1; i >= (int)idx; i--, nidx-- ) if( s[i] != '0' ) break;
-      for( i = idx; i < (int)nidx; i++ )
-          if( s[i] < '0' || s[i] > '9' )
-             {  throw float_precision::bad_float_syntax();  }
-            else
-               {
-               number = buildnumber( number, s[i] - '0', BASE_10 );
-               f_digit++; // fraction digits. trailing zeros are not counted
-               }
-
+	   if (idx < nidx)
+		   fpart = true;
+	   // Remove trailing zero digits
+	   for (i = nidx - 1; i >= idx; i--, nidx--) if (s[i] != '0') break;
+	   for (i = idx; i < nidx; i++)
+		  {
+		  if (s[i] < '0' || s[i] > '9')
+		   { throw float_precision::bad_float_syntax(); }
+		   else
+			 {
+			 if (F_RADIX != BASE_10)
+			   buildnumber(number, s[i] - '0', BASE_10);
+			 f_digit++; // fraction digits. trailing zeros are not counted
+			}
+		}
+	  if (F_RADIX == BASE_10)
+		  number += s.substr(idx, f_digit);
       nidx = s.find_first_of( "eE", idx );
       }
 
@@ -2823,7 +2908,7 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
       if( idx < nidx ) 
          epart = true;
       // Collect exponent using base 10
-      for( i = idx; i < (int)nidx; i++ )
+      for( i = idx; i < nidx; i++ )
           if( s[i] < '0' || s[i] > '9' )
              {  throw float_precision::bad_float_syntax(); }
           else
@@ -2844,15 +2929,15 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
 		}
    }
    
-   if(number.length()==0)		// Specielt 0 or 0.0 check which does not accumulate any numbers
-         expo_radix = 0;
-      else
-        expo_radix = number.length() -1;	// Always one digit before the dot
-   if( f_digit > 0 )
-      expo_e += -f_digit;  // Adjust for fraction counted as a significant
+	if(number.length()==0)		// Specielt 0 or 0.0 check which does not accumulate any numbers
+		expo_radix = 0;
+	else
+        expo_radix = (int)(number.length() -1);	// Always one digit before the dot
+	if( f_digit > 0 )
+		expo_e += -f_digit;  // Adjust for fraction counted as a significant
          
-   if( F_RADIX == BASE_10 )
-      expo_radix += expo_e;
+	if( F_RADIX == BASE_10 )
+		expo_radix += expo_e;
 
    // Put it all together
    // Now the number has everything so get rid of trailing non-significant zeros
@@ -2892,7 +2977,7 @@ float_precision _float_precision_atof( const char *str, unsigned int p, enum rou
    return fp;
    }
 
-
+  
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 /// END CONVERT FLOAT PRECISION to and from ascii representation
@@ -2942,8 +3027,10 @@ void _float_precision_strip_leading_zeros( std::string *s )
 	std::string::iterator pos;
 
 	// Strip leading zeros
-	for( pos = s->begin(); pos != s->end() && FDIGIT( *pos ) == 0; )
-		s->erase( pos );
+	for (pos = s->begin(); pos != s->end() && FDIGIT(*pos) == 0; ++pos)   ;   // Find end of leading zeros
+		//s->erase( pos );
+	if (s->begin() != pos)
+		s->erase(s->begin(), pos);
       
 	if( s->length() == 0 )
 		*s = FCHARACTER(0);
@@ -2993,7 +3080,7 @@ void _float_precision_strip_trailing_zeros( std::string *s )
 /// Description:
 ///   Right shift number x decimals by inserting 0 in front of the number
 //
-void _float_precision_right_shift( std::string *s, int shift )
+void _float_precision_right_shift( std::string *s, size_t shift )
 	{
 	s->insert( (std::string::size_type)0, shift, FCHARACTER( 0 ) );
 	}
@@ -3012,7 +3099,7 @@ void _float_precision_right_shift( std::string *s, int shift )
 /// Description:
 ///   Left shift number x decimals by appending 0 in the back of the number
 //
-void _float_precision_left_shift( std::string *s, int shift )
+void _float_precision_left_shift( std::string *s, size_t shift )
 	{
 	s->append( shift, FCHARACTER( 0 ) );
 	}
@@ -3039,12 +3126,14 @@ int _float_precision_normalize( std::string *m )
 	std::string::iterator pos;
 
 	// Left shift until a digit is not 0
-	for( pos = m->begin(); pos != m->end() && FDIGIT( *pos ) == 0; )
+	for( pos = m->begin(); pos != m->end() && FDIGIT( *pos ) == 0; ++pos )
 		{
-		m->erase( pos );
+		//m->erase( pos );  // dont do single erase
 		expo--;
 		}
-      
+	if (0 != expo)
+		m->erase(0, -expo);
+
 	if( m->length() == 0 ) // If all zero the number is zero
 		{
 		*m = FCHARACTER(0);
@@ -3084,7 +3173,7 @@ int _float_precision_normalize( std::string *m )
 ///   Rounding up (toward +·)          Maximum, negative finite value   
 ///   Rounding down) (toward -·)       -·   
 //
-int _float_precision_rounding( std::string *m, int sign, unsigned int precision, enum round_mode mode )
+int _float_precision_rounding( std::string *m, int sign, size_t precision, enum round_mode mode )
    {
    enum round_mode rm = mode;
 
@@ -3109,7 +3198,7 @@ int _float_precision_rounding( std::string *m, int sign, unsigned int precision,
 
       if( rm == ROUND_UP ) 
          {
-         unsigned int before;
+         size_t before;
 
          before = m->length();
          *m = _float_precision_uadd_short( m, 1 );
@@ -3180,16 +3269,17 @@ std::string _float_precision_uadd_short( std::string *src1, unsigned int d )
    std::string::reverse_iterator r1_pos, rd_pos;
    std::string des1;
 
+   des1.reserve( src1->capacity() );
+   des1 = *src1;
    if( d > F_RADIX )
       {
       throw float_precision::out_of_range();
       }
 
    if( d == 0 )   // Zero add
-      return *src1;
+      return des1;
 
    ireg = (unsigned short)( F_RADIX * d );
-   des1 = *src1;
    rd_pos = des1.rbegin();
    r1_pos = src1->rbegin();
    
@@ -3257,7 +3347,7 @@ std::string _float_precision_uadd( std::string *src1, std::string *src2 )
       }
 
    // No more carry or end of upper radix number. 
-   if( FCARRY( ireg ) != 0 ) // If carry add the carry as a extra radix digit to the front of the number
+   if( FCARRY( ireg ) != 0 ) // If carry add the carry as an extra radix digit to the front of the number
       des1.insert( (std::string::size_type)0, 1, FCHARACTER( (unsigned char)FCARRY( ireg ) ) );
 
    return des1;
@@ -3282,7 +3372,6 @@ std::string _float_precision_usub_short( int *result, std::string *src1, unsigne
    {
    unsigned short ireg = RADIX;
    std::string::reverse_iterator r1_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
    if( d > F_RADIX )
@@ -3293,19 +3382,18 @@ std::string _float_precision_usub_short( int *result, std::string *src1, unsigne
       *result = 0;
       return *src1;
       }
-
-   des1.erase();
-   d_pos = des1.begin();
+   des1.reserve( src1->capacity() );
+   // des1.erase();	// Not needed
    r1_pos = src1->rbegin();
 
    ireg = (unsigned short)( F_RADIX - 1 + FDIGIT( *r1_pos ) - d + FCARRY( ireg ) );
-   d_pos = des1.insert( d_pos, FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
+   des1.push_back( FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
    for( r1_pos++; FCARRY( ireg ) && r1_pos != src1->rend(); r1_pos++ )
       {
       ireg = (unsigned short)(F_RADIX - 1 + FDIGIT( *r1_pos ) + FCARRY( ireg ) );
-      d_pos = des1.insert( d_pos, FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
+      des1.push_back( FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
       }
-
+   reverse(des1.begin(), des1.end());
    *result = FCARRY( ireg ) - 1;
    return des1;
    }
@@ -3330,25 +3418,26 @@ std::string _float_precision_usub( int *result, std::string *src1, std::string *
    {
    unsigned short ireg = F_RADIX;
    std::string::reverse_iterator r1_pos, r2_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
-   des1.erase();
-   d_pos = des1.begin();
    r1_pos = src1->rbegin();
    r2_pos = src2->rbegin();
+   des1.reserve(std::max(src1->size(),src2->size()) + 8);
 
    for(; r1_pos != src1->rend() || r2_pos != src2->rend();)
       {
       if( r1_pos != src1->rend() && r2_pos != src2->rend() )
-         { ireg = (unsigned short)( F_RADIX - 1 + FDIGIT( *r1_pos ) - FDIGIT( *r2_pos ) + FCARRY( ireg ) ); r1_pos++, r2_pos++; }
+	  {
+		  ireg = (unsigned short)(F_RADIX - 1 + FDIGIT(*r1_pos) - FDIGIT(*r2_pos) + FCARRY(ireg)); ++r1_pos; ++r2_pos;
+	  }
       else
          if( r1_pos != src1->rend() )
             { ireg = (unsigned short)( F_RADIX - 1 + FDIGIT( *r1_pos ) + FCARRY( ireg ) ); r1_pos++; }
          else
             { ireg = (unsigned short)( F_RADIX - 1 - FDIGIT( *r2_pos ) + FCARRY( ireg ) ); r2_pos++; }
-      d_pos = des1.insert( d_pos, FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
+      des1.push_back( FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );  // Collect in reverse order. Faster than using insert
       }
+   reverse( des1.begin(), des1.end() );
 
    *result = FCARRY( ireg ) - 1;
    return des1;
@@ -3371,45 +3460,43 @@ std::string _float_precision_umul_short( std::string *src1, unsigned int d )
    {
    unsigned short ireg = 0;
    std::string::reverse_iterator r1_pos;
-   std::string::iterator d_pos;
    std::string des1;
 
+   des1.reserve( src1->capacity() );
    if( d > F_RADIX )
       { throw float_precision::out_of_range(); }
 
-   if( d == 0 )
+   if( d == 0 )  // Multiply with zero
       {
-      des1.insert( (std::string::size_type)0, 1, ( FCHARACTER(0) ) );
+      des1.push_back( (char)FCHARACTER(0) );
       return des1;
       }
 
-   if( d == 1 )
+   if( d == 1 )  // Multiply with 1
       {
       des1 = *src1;
       return des1;
       }
 
-   if( d == F_RADIX )  
+   if( d == F_RADIX )  // Multiply with RADIX
       {
-      //des1.insert( (std::string::size_type)0, 1, ( FCHARACTER(0) ) );
       des1 = *src1;
 	  des1.append( 1, FCHARACTER(0) );
       _float_precision_strip_leading_zeros( &des1 );
       return des1;
       }
 
-   des1.erase();             
-   d_pos = des1.begin();
+   // des1.erase();             // Not needed
    r1_pos = src1->rbegin();
-   
    for( ; r1_pos != src1->rend(); r1_pos++ )
       {
       ireg = (unsigned short)( FDIGIT(  *r1_pos ) * d + FCARRY( ireg ) );
-      d_pos = des1.insert( d_pos, FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
+      des1.push_back( FCHARACTER( (unsigned char)FSINGLE( ireg ) ) );
       }
 
    if( FCARRY( ireg ) != 0 )
-      d_pos = des1.insert( d_pos, FCHARACTER( (unsigned char)FCARRY( ireg ) ) );
+      des1.push_back( FCHARACTER( (unsigned char)FCARRY( ireg ) ) );
+   reverse( des1.begin(), des1.end() );
 
    return des1;
    }
@@ -3435,6 +3522,7 @@ std::string _float_precision_umul( std::string *src1, std::string *src2 )
    std::string::reverse_iterator r_pos2;
    
    r_pos2 = src2->rbegin();
+   des1.reserve(src1->size() + src2->size() + 8);
    des1 = _float_precision_umul_short( src1, FDIGIT( *r_pos2 ) );
    for( r_pos2++, disp = 1; r_pos2 != src2->rend(); disp++, r_pos2++ )
       {
@@ -3470,38 +3558,57 @@ std::string _float_precision_umul_fourier( std::string *src1, std::string *src2 
    unsigned short ireg = 0;
    std::string des1;
    std::string::iterator pos;
-   unsigned int n, l, l1, l2;
-   int j;
+   size_t n, j, l, l1, l2;
    double *a, *b, cy;
    
    l1 = src1->length();
    l2 = src2->length();
+   des1.reserve(l1 + l2 + 16);
    l = l1 < l2 ? l2 : l1;
    for( n = 1; n < l; n <<= 1 ) ;
    n <<= 1;
    a = new double [n];
-   b = new double [n];
-   for( l=0, pos = src1->begin(); pos != src1->end(); pos++ ) a[l++] = (double)FDIGIT(*pos);
-   for( ; l < n; ) a[l++] = (double)0;
-   for( l=0, pos = src2->begin(); pos != src2->end(); pos++ ) b[l++] = (double)FDIGIT(*pos);
-   for( ; l < n; ) b[l++] = (double)0;
-   _int_real_fourier( a, n, 1 );
-   _int_real_fourier( b, n, 1 );
+   b = new double[n]; 
+ 
+   for (l = 0, pos = src1->begin(); pos != src1->end(); ++l, ++pos )
+	   a[l] = (double)FDIGIT(*pos);
+   for (; l < n; ++l) a[l] = (double)0;
+   for (l = 0, pos = src2->begin(); pos != src2->end(); ++l, ++pos)
+	   b[l] = (double)FDIGIT(*pos);
+   for (; l < n; ++l) b[l] = (double)0;
+#if true
+#pragma omp parallel sections firstprivate(a,b,n)
+   {
+#pragma omp section 
+	   {
+	   _int_real_fourier(a, n, 1);
+	   }
+#pragma omp section
+	   {
+	   _int_real_fourier(b, n, 1);
+	   }
+   }
+#else
+   _int_real_fourier(a, n, 1);
+   _int_real_fourier(b, n, 1);
+#endif
+
+
    b[0] *= a[0];
    b[1] *= a[1];
-   for( j = 2; j < (int)n; j += 2 )
+   for( j = 2; j < n; j += 2 )
       {
       double t;
       b[j]=(t=b[j])*a[j]-b[j+1]*a[j+1];
       b[j+1]=t*a[j+1]+b[j+1]*a[j];
       }
    _int_real_fourier( b, n, -1 );
-   for( cy=0, j=n-1; j >= 0; j-- )
+   for( cy=0, j=0; j <= n-1; ++j )
       {
       double t;
-      t=b[j]/(n>>1)+cy+0.5;
+      t=b[n-1-j]/(n>>1)+cy+0.5;
       cy=(unsigned long)( t/ F_RADIX );
-      b[j]=t-cy*F_RADIX;
+      b[n-1-j]=t-cy*F_RADIX;
       }
 
    ireg = (unsigned short)cy;
@@ -3511,8 +3618,7 @@ std::string _float_precision_umul_fourier( std::string *src1, std::string *src2 
       des1.append( 1, FCHARACTER( (char)b[ j ] ) );
    
    _float_precision_strip_leading_zeros( &des1 );
-   delete [] a;
-   delete [] b;
+   delete [] a, b;
 
    return des1;
    }
@@ -3549,9 +3655,9 @@ std::string _float_precision_udiv_short( unsigned int *remaind, std::string *src
 		return des1;
 		}
 
-	des1.erase();
+	// des1.erase();  // Not needed
 	s1_pos = src1->begin();
-   
+	des1.reserve(src1->size() + 8);
 	ir = 0;
 	for(; s1_pos != src1->end(); s1_pos++ )
 		{
@@ -3637,9 +3743,10 @@ std::string _float_precision_urem( std::string *src1, std::string *src2 )
    {
    int wrap, plusdigit;
    std::string des, quotient, divisor;
-   
+   des.reserve(src2->size() + 8);
    des = FCHARACTER(0);
    divisor = *src1;
+
    if( src2->length() == 1 ) // Make short rem 
       {
       unsigned int rem;
@@ -3708,7 +3815,7 @@ float_precision float_precision::epsilon()
 		float_precision p( F_RADIX, mPrec );
 
 	    // beta^1-t
-		for(int n = (int)mPrec-1; n > 0; n >>= 1) 
+		for(size_t n = mPrec-1; n > 0; n >>= 1) 
            {
            if( ( n & 0x1 ) != 0 ) res *= p;  // Odd
            p *= p;						 
@@ -3751,8 +3858,9 @@ float_precision float_precision::epsilon()
 //
 float_precision _float_precision_inverse( const float_precision& a )
    {
-   unsigned int precision;
-   int i, imax, expo;
+   size_t precision;
+   size_t i, imax;
+   int expo;
    double fv, dv, fu;
    float_precision r, u, v, c2;
    std::string::reverse_iterator rpos;
@@ -3796,7 +3904,7 @@ float_precision _float_precision_inverse( const float_precision& a )
          if( FDIGIT( *pos ) )
             break;
 
-      if( pos == r.ref_mantissa()->end() || (unsigned)i >= precision )
+      if( pos == r.ref_mantissa()->end() || i >= precision )
          break;
       }
 
@@ -3828,8 +3936,8 @@ float_precision _float_precision_inverse( const float_precision& a )
 float_precision sqrt(const float_precision& x)
 	{
 	const unsigned int extra = 2;
-	unsigned int precision;
-	unsigned int digits;
+	size_t precision;
+	size_t digits;
 	int expo, expo_sq, i, imax;
 	double fv, dv;
 	float_precision r, u, v, tmp;
@@ -3879,7 +3987,7 @@ float_precision sqrt(const float_precision& x)
 	tmp.precision(precision+1);
 	u = float_precision(fv);
 	// Now iterate using Netwon Un=0.5U(3-VU^2)
-	for (digits = min((unsigned)32, precision); ; digits = min(precision + 2, digits * 2))
+	for (digits = min((size_t)32, precision); ; digits = min(precision + 2, digits * 2))
 		{
 		// Increase precision by a factor of two for the working variable s r & u. 
 		r.precision(digits);
@@ -3948,7 +4056,7 @@ static std::string spigot_pi_64(const int digits, int no_dig = 4)
 	unsigned long f, f2;									// New base 1 decimal digits at a time
 	unsigned long dig_n = 0;								// dig_n holds the next no_dig digit to add
 	unsigned long e = 0;									// Save previous 4 digits
-	uint64_t acc = 0, g = 0, tmp64;
+	unsigned long long acc = 0, g = 0, tmp64;
 	ss.reserve(digits + 16);								// Pre reserve the string size to be able to accumulate all digits plus 8
 	if (no_dig > 8) no_dig = 8;								// ensure no_dig<=8
 	if (no_dig < 1) no_dig = 1;								// Ensure no_dig>0
@@ -3958,8 +4066,8 @@ static std::string spigot_pi_64(const int digits, int no_dig = 4)
 	f = f_table[no_dig];									// Load the initial f
 	f2 = f2_table[no_dig];									// Load the initial f2
 
-	uint64_t *a = new uint64_t[c];								// Array of 4 digits decimals
-																// b is the nominator previous base; c is the index
+	unsigned long long  *a = new unsigned long long[c];		// Array of 4 digits decimals
+															// b is the nominator previous base; c is the index
 	for (; (b = c -= TERMS) > 0 && overflow_flag == false; first_time = false)
 		{
 		for (; --b > 0 && overflow_flag == false;)
@@ -3984,7 +4092,7 @@ static std::string spigot_pi_64(const int digits, int no_dig = 4)
 		if (carry > 0)
 			{
 			++no_carry;											// Keep count of how many carrier detect
-			for (int i = ss.length(); carry > 0 && i > 0; --i)	// Loop and propagate back the extra carrier to the existing PI digits found so far
+			for (size_t i = ss.length(); carry > 0 && i > 0; --i)	// Loop and propagate back the extra carrier to the existing PI digits found so far
 				{												// Never seen more than one loop here but it can handle multiple carry back propagation 
 				int new_digit;
 				new_digit = (ss[i - 1] - '0') + carry;			// Calculate new digit
@@ -3993,7 +4101,7 @@ static std::string spigot_pi_64(const int digits, int no_dig = 4)
 				}
 			}
 
-		(void)sprintf(buffer, "%0*lu", no_dig, dig_n);		// Print previous no_dig digits to buffer
+		(void)sprintf_s(buffer, sizeof(buffer), "%0*lu", no_dig, dig_n);		// Print previous no_dig digits to buffer
 		ss += std::string(buffer);								// Add it to PI string
 		if (first_time == true)
 			ss.insert(1, ".");									// add the decimal pointafter the first digit to create 3.14...
@@ -4023,7 +4131,7 @@ static std::string spigot_pi_64(const int digits, int no_dig = 4)
 /// Spigot algorithm for e
 /// From The computer Journal 1968 (A H J Sale) written in Algo 60 and ported with some modification 
 /// to c++
-static std::string spigot_e( const int digits)
+static std::string spigot_e( const size_t digits)
 	{
 	unsigned int m;
 	unsigned int tmp, carry;
@@ -4050,10 +4158,10 @@ static std::string spigot_e( const int digits)
 		m = 5;
 	coef = new unsigned int[m + 1];
 
-	for (int i = 1; i < digits; ++i, first_time = false)
+	for (size_t i = 1; i < digits; ++i, first_time = false)
 		{
 		carry = 0;
-		for (int j = m; j >= 2; j--)
+		for (unsigned int j = m; j >= 2; j--)
 			{
 			if (first_time == true)
 				tmp = 10;
@@ -4093,20 +4201,20 @@ static std::string spigot_e( const int digits)
 /// Initialization values: (x-1)/(x(n+1))...
 /// The function is declare static since it only serve as a sub function for the function _float_table()
 ///
-static std::string spigot_lnxy_64(const unsigned int x, const unsigned int y, const int digits, int no_dig = 1)
+static std::string spigot_lnxy_64(const unsigned int x, const unsigned int y, const size_t digits, int no_dig = 1)
 	{
 	static unsigned long f_table[] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000 };
 	bool first_time = true;				// First iteration of the algorithm
 	bool overflow_flag = false;			// 64bit integer overflow flag
 	char buffer[32];
 	std::string ss;						// The std::string that holds the ln(x)
-	int dig;
+	size_t dig;
 	unsigned int car;
-	unsigned int no_terms;				// No of terms to complete as a function of digits
+	size_t no_terms;				// No of terms to complete as a function of digits
 	unsigned long f;					// New base 1 decimal digits at a time
 	unsigned long dig_n;				// dig_n holds the next no_dig digit to add
-	uint64_t carry;
-	uint64_t tmp_n, tmp_dn;
+	unsigned long long carry;
+	unsigned long long tmp_n, tmp_dn;
 	ss.reserve(digits + 16);
 	int factor;
 
@@ -4122,17 +4230,17 @@ static std::string spigot_lnxy_64(const unsigned int x, const unsigned int y, co
 	factor = (int)ceil(10 * log(0.5) / log((double)(x - y) / (double)x));
 	no_terms = (unsigned int)(factor * dig / 3 + 3);
 	// Allocate the needed accumulators
-	uint64_t *acc_n = new uint64_t[no_terms + 1];
-	uint64_t *acc_dn = new uint64_t[no_terms + 1];
+	unsigned long long *acc_n = new unsigned long long[no_terms + 1];
+	unsigned long long *acc_dn = new unsigned long long[no_terms + 1];
 	f = f_table[no_dig];				// Load the initial f
 	carry = 0;							// Set carry to 0
 	//Loop for each no_dig
-	for (int i = dig; i >= 0 && overflow_flag == false; i -= first_time == true ? 1 : no_dig, first_time = false)
+	for (size_t i = 0; i <= dig && overflow_flag == false; i += first_time == true ? 1 : no_dig, first_time = false)
 		{
 		// Calculate new number of terms needed
-		no_terms = (unsigned int)(factor * i / 3 + 3);
+		no_terms = (unsigned int)(factor * (dig-i) / 3 + 3);
 		// Loop for each no_terms
-		for (int j = no_terms; j>0 && overflow_flag == false; --j)
+		for (size_t j = no_terms; j>0 && overflow_flag == false; --j)
 			{
 			if (first_time == true)
 				{// Calculate the initialize value
@@ -4178,15 +4286,15 @@ static std::string spigot_lnxy_64(const unsigned int x, const unsigned int y, co
 		// Add the carry to the existing number for digits calculate so far.
 		if (car > 0)
 			{
-			for (int j = ss.length(); car > 0 && j > 0; --j)
+			for (size_t j = ss.length(); car > 0 && j > 0; --j)
 				{
-				int dd;
+				unsigned int dd;
 				dd = (ss[j - 1] - '0') + car;
 				car = dd / 10;
 				ss[j - 1] = dd % 10 + '0';
 				}
 			}
-		(void)sprintf(buffer, "%0*lu", first_time == true ? 1 : no_dig, dig_n);
+		(void)sprintf_s(buffer, sizeof(buffer), "%0*lu", first_time == true ? 1 : no_dig, dig_n);
 		ss += std::string(buffer);
 		if (first_time == true)
 			acc_n[0] %= f*acc_dn[0];
@@ -4226,7 +4334,7 @@ static std::string spigot_lnxy_64(const unsigned int x, const unsigned int y, co
 ///   we just the "constant" at a higher precision which eventually will be
 ///   rounded to the destination variables precision 
 //
-float_precision _float_table( enum table_type tt, unsigned int precision )
+float_precision _float_table( enum table_type tt, size_t precision )
    {
    static float_precision ln2( 0, 0, ROUND_NEAR );
    static float_precision ln10( 0, 0, ROUND_NEAR );
@@ -4243,11 +4351,11 @@ float_precision _float_table( enum table_type tt, unsigned int precision )
 	      else
 		     {// Using Spigot algorithm for exp(1) Calculation
 		     std::string ss;
-		     unsigned int prec = std::max(20U, precision + 2);
+		     size_t prec = std::max((size_t)20U, precision + 2);
 		     e.precision(prec);
 		     ss = spigot_e( prec );				// The result as a string in BASE_10
 		     e = float_precision(ss, prec);		// Convert to float_precision
-		     e.precision(std::max(20U, precision));
+		     e.precision(std::max((size_t)20U, precision));
 		     res = e;
 	         }
 		  break;
@@ -4257,11 +4365,11 @@ float_precision _float_table( enum table_type tt, unsigned int precision )
 		  else
 			 { // Using Spigot algorithm for LN2 Calculation
 			 std::string ss;
-			 unsigned int prec = std::max(20U, precision+2);
+			 size_t prec = std::max((size_t)20U, precision+2);
 			 ln2.precision( prec );
 			 ss = spigot_lnxy_64(2, 1, prec, 4);	// The result as a string in BASE_10
 			 ln2 = float_precision(ss, prec);		// Convert to float_precision
-			 ln2.precision(std::max(20U, precision));
+			 ln2.precision(std::max((size_t)20U, precision));
 			 res = ln2;								// Save the result
 			 }
 		  break;
@@ -4271,14 +4379,14 @@ float_precision _float_table( enum table_type tt, unsigned int precision )
          else
 			{ // Using Spigot Algorithm for LN10. LN(10)=3*ln(2)+ln(10/8)
 			std::string ss;
-			unsigned int prec=std::max(20U, precision + 2);
+			size_t prec=std::max((size_t)20U, precision + 2);
 			ln10.precision(prec);
 			ss = spigot_lnxy_64(2, 1, prec, 4);		// The result as a string in BASE_10
 			ln10 = float_precision(ss, prec);		// Convert to float_precision
 			ln10 *= float_precision(3);
 			ss = spigot_lnxy_64(10, 8, prec, 4);	// The result as a string in BASE_10
 			ln10 += float_precision(ss, prec);		// Convert and add to float_precision ln10
-			ln10.precision(std::max(20U, precision));
+			ln10.precision(std::max((size_t)20U, precision));
 			res = ln10;								// Save the result
 			}
 		 break;
@@ -4287,7 +4395,7 @@ float_precision _float_table( enum table_type tt, unsigned int precision )
 			res = pi;
 		 else
 			{  // Using Brent-Salamin method
-			unsigned int min_precision = precision + 5 + (F_RADIX == BASE_2 ? 5 : 0);
+			size_t min_precision = precision + 5 + (F_RADIX == BASE_2 ? 5 : 0);
 			const int limit = -(int)(precision + 2);
 			const float_precision c0(0), c2(2), c05(0.5);
 			float_precision a(1, min_precision), b(2, min_precision), sum(0.5, min_precision);
@@ -4348,7 +4456,7 @@ float_precision _float_table( enum table_type tt, unsigned int precision )
 //
 float_precision exp( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    float_precision v;
    const float_precision c1(1);
 
@@ -4397,7 +4505,7 @@ float_precision exp( const float_precision& x )
 //
 float_precision log( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int j, k;
    int expo;
    double zd, dlimit;
@@ -4502,7 +4610,7 @@ float_precision log( const float_precision& x )
 //
 float_precision log10( const float_precision& x )
    {
-   unsigned int precision = x.precision();  
+   size_t precision = x.precision();  
    float_precision res( 0, precision + 1 );
 
    if( x <= float_precision(0) ) 
@@ -4653,7 +4761,7 @@ float_precision fmod( const float_precision& x, const float_precision& y )
 float_precision floor( const float_precision& x )
    {
    float_precision f;
-   unsigned int exponent = 1 + x.exponent();
+   int exponent = 1 + x.exponent();
 
     if( F_RADIX < BASE_10 ) 
         { 
@@ -4699,7 +4807,7 @@ float_precision floor( const float_precision& x )
 float_precision ceil( const float_precision& x )
    {
    float_precision f;
-   unsigned int exponent = 1 + x.exponent();
+   int exponent = 1 + x.exponent();
 
     if( F_RADIX < BASE_10 ) 
         { 
@@ -4731,7 +4839,7 @@ float_precision ceil( const float_precision& x )
 
 
 ///	@author Henrik Vestermark (hve@hvks.com)
-///	@date  1/21/2005
+///	@date  8/10/2020
 ///	@brief 		Split a float number into integer part and fraction
 ///	@return 	float_precision -	Fraction part of x
 ///	@param      "x"	- The argument
@@ -4743,9 +4851,10 @@ float_precision ceil( const float_precision& x )
 ///   Float Precision fmod
 ///   Split a Floating point number into integer part and fraction
 ///   Equivalent with the same standard C function call
+///	  Use a modified version of the function fmod(x,c1)
 //
 float_precision modf( const float_precision& x, float_precision *intptr )
-   {
+   {/*
    float_precision f(0, x.precision() );
    float_precision c1( 1, x.precision() );
 
@@ -4754,7 +4863,30 @@ float_precision modf( const float_precision& x, float_precision *intptr )
    f = fmod( x, c1 );
    *intptr = x - f;
 
-   return f;
+   return f;*/
+ 
+	float_precision i, f;
+	int expo;
+
+	f.precision(x.precision());
+	i.precision(x.precision());
+	intptr->precision(x.precision());
+	i = x;
+	expo = i.exponent();
+	if (expo < 0)
+		{
+		f = x; 
+		i = float_precision(0);
+		}
+	else
+		{
+		i.mode(ROUND_ZERO);
+		i.precision(1 + expo);
+		i.mode(ROUND_NEAR);
+		f = x - i;
+		}
+	*intptr = i;
+	return f;
    }
 
 
@@ -4854,9 +4986,9 @@ float_precision frexp( float_precision& x, int *expptr )
 //
 float_precision nroot(const float_precision& x, unsigned int n)
 	{
-	const unsigned int extra = 2;
-	unsigned int precision;
-	unsigned int digits;
+	const size_t extra = 2;
+	size_t precision;
+	size_t digits;
 	int expo, expo_sq;
 	double fv;
 	float_precision r, u, v, tmp, fn(n);
@@ -4897,7 +5029,7 @@ float_precision nroot(const float_precision& x, unsigned int n)
 	u = float_precision(fv);
 	fn = 1 / fn;
 	// Now iterate using Netwon  Un=U*(-VU^n+(n+1))/n
-	for (digits = min((unsigned)32, precision); ; digits = min(precision + extra, digits * 2))
+	for (digits = min((size_t)32, precision); ; digits = min(precision + extra, digits * 2))
 		{
 		// Increase precision by a factor of two
 		r.precision(digits);
@@ -4968,7 +5100,7 @@ float_precision nroot(const float_precision& x, unsigned int n)
 //
 float_precision atan( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int j, k;
    double zd, dlimit;
    float_precision r, u, v, v2;
@@ -5041,7 +5173,7 @@ float_precision atan( const float_precision& x )
 //
 float_precision atan2( const float_precision& y, const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    float_precision u;
    const float_precision c0(0), c05(0.5);
 
@@ -5103,7 +5235,7 @@ float_precision atan2( const float_precision& y, const float_precision& x )
 //
 float_precision asin( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int k, j, sign;
    double zd, dlimit;
    float_precision r, u, v, v2, sqrt2, lc, uc;
@@ -5204,7 +5336,7 @@ float_precision asin( const float_precision& x )
 //
 float_precision acos( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    float_precision y;
    const float_precision c1(1);
    
@@ -5244,7 +5376,7 @@ float_precision acos( const float_precision& x )
 //
 float_precision sin( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int k, sign, j;
    double zd;
    float_precision r, u, v, v2, de(0);
@@ -5349,7 +5481,7 @@ float_precision sin( const float_precision& x )
 //
 float_precision cos( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int k, j;
    double zd;
    float_precision r, u, v, v2, de(0);
@@ -5444,7 +5576,7 @@ float_precision cos( const float_precision& x )
 //
 float_precision tan( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    float_precision u, r, v, p;
    const float_precision c1(1), c2(2), c3(3), c05(0.5);
 
@@ -5517,7 +5649,7 @@ float_precision tan( const float_precision& x )
 //
 float_precision sinh( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int k, j, sign;
    double zd, dlimit;
    float_precision r, u, v, v2, de(0);
@@ -5597,7 +5729,7 @@ float_precision sinh( const float_precision& x )
 //
 float_precision cosh( const float_precision& x )
    {
-   unsigned int precision;
+   size_t precision;
    int k, j, sign;
    double zd, dlimit;
    float_precision r, u, v, v2, de(0);
@@ -5772,7 +5904,7 @@ float_precision atanh( const float_precision& x )
 
    v.precision( x.precision() + 1 );
    v = x;
-   v = c05*log((c1+v)/(c1-x));
+   v = c05*log((c1+v)/(c1-v));
    
    // Round to same precision as argument and rounding mode
    v.mode( x.mode() );
@@ -5796,7 +5928,7 @@ float_precision atanh( const float_precision& x )
 
 int_precision _int_precision_fastdiv( const int_precision &s1, const int_precision &s2 )
 	{
-	unsigned int ss;
+	size_t ss;
 	int_precision r2;
 	float_precision f1, f2, rf;
 
@@ -5816,7 +5948,7 @@ int_precision _int_precision_fastdiv( const int_precision &s1, const int_precisi
 
 int_precision _int_precision_fastrem( const int_precision &s1, const int_precision &s2 )
 	{
-	unsigned int ss;
+	size_t ss;
 	int_precision r2;
 	float_precision f1, f2, rf;
 

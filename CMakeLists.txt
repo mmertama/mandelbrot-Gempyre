@@ -4,12 +4,20 @@ set(NAME mandelbrot)
 project (${NAME})
 
 include(GNUInstallDirs)
+
+find_package (gempyre REQUIRED)
+
 include(ExternalProject)
+include(hiillos)
+include(gempyre)
 
 set(CMAKE_CXX_STANDARD 17)
 
-if(MSVC)
+if(WIN32)
     set(USE_APML TRUE)
+    if(NOT MSVC)
+        set(BM_LIB "-lgomp")
+    endif()
 else()
     set(USE_APML FALSE)
     find_path(gmp gmp.h)
@@ -44,24 +52,7 @@ if(USE_MPFR)
    #  find_library(BM_LIB mpfr PATHS  ${BM_PATH} ${BM_PATH}/src PATH_SUFFIXES .libs)
 endif()
 
-option(GEMPYRE_LIB OFF)
-
-set(GEMPYRE_PATH $ENV{GEMPYRE_DIR})
-if(GEMPYRE_LIB)
-    find_library(gempyre NAMES libgempyre.a PATHS ${GEMPYRE_PATH}/builds/build-Gempyre-Desktop_Qt_5_15_0_clang_64bit-Debug/gempyrelib REQUIRED)
-    find_library(socket NAMES uSockets.a PATHS ${GEMPYRE_PATH}/gempyrelib/extra/uNetworking/uSockets REQUIRED)
-    set(GEMPYRE_LIBS ${gempyre} ${socket})
-    message("Libs: ${GEMPYRE_LIBS}")
-else()
-
-    find_package (gempyre REQUIRED)
-
-endif()
-
-include(addResource)
-
 include_directories(
-    #${GEMPYRE_PATH}/gempyrelib/include
     include
     ${BM_INCLUDE_PATH}
 )
@@ -99,14 +90,10 @@ if(USE_MPFR)
     find_library(GMP gmp REQUIRED PATHS -L/usr/local/Cellar/gmp/6.2.0/lib) #installed using 'brew install gmp'
     set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" ${GMP})
 
-
 endif()
 
-addResource(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
+hiillos_make_application(${PROJECT_NAME})
 
-if(GEMPYRE_LIB)
-    target_link_libraries (${PROJECT_NAME} ${GEMPYRE_LIBS} ${BM_LIB})
-else()
-    target_link_libraries (${PROJECT_NAME} gempyre::gempyre ${BM_LIB})
-endif()
+gempyre_add_resources(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
 
+target_link_libraries (${PROJECT_NAME} gempyre::gempyre ${BM_LIB})

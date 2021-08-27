@@ -5,14 +5,14 @@
  *******************************************************************************
  *
  *
- *                       Copyright (c) 2002-2019
+ *                       Copyright (c) 2002-2021
  *                       Henrik Vestermark
  *                       Denmark
  *
  *                       All Rights Reserved
  *
  *   This source file is subject to the terms and conditions of the
- *   Future Team Software License Agreement which restricts the manner
+ *   Henrik Vestermark License Agreement which restricts the manner
  *   in which it may be used.
  *   Mail: hve@hvks.com
  *
@@ -37,16 +37,17 @@
  * 01.01	HVE/030331		Initial release
  * 01.02    hve/060203		Minor declaration bug fixed
  * 01.03    HVE/060217		Error in the formula for exp and log corrected
- * 01.04	HVE/14Feb2018	Change log(z). instead of using atan(imag()/real()) it has been replaced with atan2(imag(),real()) which is more correct
- * 01.05	HVE/05Mar2018	Added trigonometic functions for complex arguments
- * 01.06	HVE/JUL-07-2019	Included iostream header for increased portability
+ * 01.04	HVE/14-Feb-2018	Change log(z). instead of using atan(imag()/real()) it has been replaced with atan2(imag(),real()) which is more correct
+ * 01.05	HVE/05-Mar-2018	Added trigonometic functions for complex arguments
+ * 01.06	HVE/07-Jul-2019	Included iostream header for increased portability
+ * 01.07	HVE/22-Mar-2021 Updated License Info
  *
  * End of Change Record
  * --------------------------------------------------------------------------
 */
 
 /* define version string */
-static char _VC_[] = "@(#)complexprecision.h 01.06 -- Copyright (C) Henrik Vestermark";
+static char _VC_[] = "@(#)complexprecision.h 01.07 -- Copyright (C) Henrik Vestermark";
 
 #include <iostream>
 
