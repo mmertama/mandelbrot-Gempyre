@@ -7,11 +7,13 @@
 
 #include "mandelbrotdraw.h"
 
-int main(int argc, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     Gempyre::setDebug();
 
-    Gempyre::Ui ui(Mandelbrot_resourceh,
-                 "mandelbrot.html", argc, argv);
+    Gempyre::Ui ui(Mandelbrot_resourceh, "mandelbrot.html");
+    //Gempyre::Ui ui(Mandelbrot_resourceh, "mandelbrot.html", GempyreUtils::htmlFileLaunchCmd(), "");
+
+
     Gempyre::CanvasElement canvas(ui, "canvas");
     Gempyre::Element iterations(ui, "iterations_slider");
     Gempyre::Element colors(ui, "color_slider");
@@ -21,6 +23,8 @@ int main(int argc, char** argv) {
     Gempyre::Graphics backupGraphics(canvas);
     Gempyre::Graphics blend(canvas);
     Gempyre::Element busy(ui, "busy");
+
+    ui.setLogging(true);
 
     bool mousedown = false;
     int mousex;

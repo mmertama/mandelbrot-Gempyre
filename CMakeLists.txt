@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.16)
+cmake_minimum_required (VERSION 3.18)
 
 set(NAME mandelbrot)
 project (${NAME})
@@ -8,7 +8,6 @@ include(GNUInstallDirs)
 find_package (gempyre REQUIRED)
 
 include(ExternalProject)
-include(hiillos)
 include(gempyre)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -20,15 +19,15 @@ if(WIN32)
     endif()
 else()
     set(USE_APML FALSE)
-    find_path(gmp gmp.h)
+    find_path(gmp NAMES gmp.h)
     if(gmp)
         include_directories(${gmp})
         set(USE_MPFR TRUE)
     else()
         if(APPLE)
-             message("Consider: $brew install gmp")
+             message(FATAL_ERROR "Consider: $brew install gmp")
          else()
-            message("Consider: $sudo apt install libgmp-dev")
+            message(FATAL_ERROR "Consider: $sudo apt install libgmp-dev")
         endif()
     endif()
 endif()
@@ -91,8 +90,6 @@ if(USE_MPFR)
     set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" ${GMP})
 
 endif()
-
-hiillos_make_application(${PROJECT_NAME})
 
 gempyre_add_resources(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
 
