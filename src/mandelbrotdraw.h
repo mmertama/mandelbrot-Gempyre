@@ -63,9 +63,6 @@ public:
         m_cancel = false;
         const auto threads = 11;
         const auto updater = [this, onComplete, threads](int hstart, int hend) { //yes it is needed for MSVC :-(
-           // const auto [minpri, maxpri] = TelexUtils::getPriorityLevels();
-           // (void) maxpri;
-           //  TelexUtils::setPriority(20);
             for(auto y = hstart; y < hend; y++) {
                 if(m_cancel)
                     return;
@@ -74,9 +71,9 @@ public:
                                                  img(static_cast<double>(y)));
                     const auto it = Mandelbrot::calculate(c, m_iterations);
                     if(it < m_iterations)
-                        m_g.setPixel(x, y, m_colorlut[static_cast<unsigned>(it)]);
+                        m_g.set_pixel(x, y, m_colorlut[static_cast<unsigned>(it)]);
                     else
-                        m_g.setPixel(x, y, Gempyre::Graphics::Black);
+                        m_g.set_pixel(x, y, Gempyre::Graphics::Black);
                     std::this_thread::yield(); //let the other thread run
                 }
                  std::this_thread::sleep_for(100ms); //make others happen

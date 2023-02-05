@@ -8,7 +8,6 @@ include(GNUInstallDirs)
 find_package (gempyre REQUIRED)
 
 include(ExternalProject)
-include(hiillos)
 include(gempyre)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -91,8 +90,6 @@ if(USE_MPFR)
     set(BM_LIB "${CMAKE_CURRENT_SOURCE_DIR}/src/mprf/src/.libs/${CMAKE_STATIC_LIBRARY_PREFIX}mpfr${CMAKE_STATIC_LIBRARY_SUFFIX}" ${GMP})
 
 endif()
-
-hiillos_make_application(${PROJECT_NAME})
 
 gempyre_add_resources(PROJECT ${PROJECT_NAME} TARGET include/${NAME}_resource.h SOURCES gui/${NAME}.html gui/${NAME}.css gui/${NAME}.png)
 
