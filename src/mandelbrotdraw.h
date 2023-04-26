@@ -16,7 +16,7 @@ using namespace std::chrono_literals;
 class MandelbrotDraw {
 public:
     using Color = Gempyre::Color::type;
-    MandelbrotDraw(Gempyre::Graphics& g, const Mandelbrot::Number& left, const Mandelbrot::Number& top, const Mandelbrot::Number& right, const Mandelbrot::Number& bottom, int iterations) :
+    MandelbrotDraw(Gempyre::Bitmap& g, const Mandelbrot::Number& left, const Mandelbrot::Number& top, const Mandelbrot::Number& right, const Mandelbrot::Number& bottom, int iterations) :
         m_g(g), m_height(static_cast<Mandelbrot::Number>(g.height())), m_left(left), m_right(right), m_top(top), m_bottom(bottom), m_iterations(iterations) {
         makeLut();
     }
@@ -73,7 +73,7 @@ public:
                     if(it < m_iterations)
                         m_g.set_pixel(x, y, m_colorlut[static_cast<unsigned>(it)]);
                     else
-                        m_g.set_pixel(x, y, Gempyre::Graphics::Black);
+                        m_g.set_pixel(x, y, Gempyre::Color::Black);
                     std::this_thread::yield(); //let the other thread run
                 }
                  std::this_thread::sleep_for(100ms); //make others happen
@@ -120,7 +120,7 @@ private:
             const auto dg = (odd ? (g0 - g1) : (g1 - g0)) / lutcycle;
             const auto db = (odd ? (b0 - b1) : (b1 - b0)) / lutcycle;
             for(int i= 0; i < static_cast<int>(lutcycle); ++i) {
-                m_colorlut[lutpos] = Gempyre::Graphics::pix(static_cast<unsigned>(r), static_cast<unsigned>(g), static_cast<unsigned>(b));
+                m_colorlut[lutpos] = Gempyre::Bitmap::pix(static_cast<unsigned>(r), static_cast<unsigned>(g), static_cast<unsigned>(b));
                 r += dr;
                 g += dg;
                 b += db;
@@ -132,7 +132,7 @@ private:
         const auto dg = (odd ? (g0 - g1) : (g1 - g0)) / lutcycle;
         const auto db = (odd ? (b0 - b1) : (b1 - b0)) / lutcycle;
         for(; lutpos < static_cast<unsigned>(m_iterations); ++lutpos) {
-            m_colorlut[lutpos] = Gempyre::Graphics::pix(static_cast<unsigned>(r), static_cast<unsigned>(g), static_cast<unsigned>(b));
+            m_colorlut[lutpos] = Gempyre::Bitmap::pix(static_cast<unsigned>(r), static_cast<unsigned>(g), static_cast<unsigned>(b));
             r += dr;
             g += dg;
             b += db;
@@ -144,12 +144,12 @@ private:
         std::for_each(m_results.begin(), m_results.end(), [](auto& f){f.wait_for(5s);});
     }
 
-    Gempyre::Graphics& m_g;
+    Gempyre::Bitmap& m_g;
     const Mandelbrot::Number m_height;
     Mandelbrot::Number m_left, m_right, m_top, m_bottom;
     int m_iterations;
-    Color m_colorStart = Gempyre::Graphics::Red;
-    Color m_colorEnd = Gempyre::Graphics::Blue;
+    Color m_colorStart = Gempyre::Color::Red;
+    Color m_colorEnd = Gempyre::Color::Blue;
     int m_colorCycles = 1;
     std::vector<Color> m_colorlut;
     std::vector<std::future<void>> m_results;

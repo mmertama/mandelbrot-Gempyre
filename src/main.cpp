@@ -17,9 +17,9 @@ int main(int argc, char** argv) {
     Gempyre::Element colors(ui, "color_slider");
     Gempyre::Element radius(ui, "radius");
     Gempyre::Element zooms(ui, "zooms");
-    Gempyre::Graphics graphics(canvas);
-    Gempyre::Graphics backupGraphics(canvas);
-    Gempyre::Graphics blend(canvas);
+    Gempyre::Bitmap graphics;
+    Gempyre::Bitmap backupGraphics;
+    Gempyre::Bitmap blend;
     Gempyre::Element busy(ui, "busy");
 
     bool mousedown = false;
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     std::unique_ptr<MandelbrotDraw> mandelbrot;
     std::vector<std::array<Mandelbrot::Number, 4>> coordinateStack;
 
-    const auto updater = [&graphics, &busy](int c, int a) {
+    const auto updater = [&graphics, &busy, &canvas](int c, int a) {
         if(c == 0) {
             busy.set_attribute("style", "display:inline");
         }
@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
         }
         if(c == a) {
             busy.set_attribute("style", "display:none");
-            graphics.update();
+            canvas.draw(graphics);
         }
     };
 
@@ -76,7 +76,8 @@ int main(int argc, char** argv) {
             backupGraphics = graphics.clone();
         }, {"clientX", "clientY"});
 
-        canvas.subscribe("mouseup", [&mousex, &mousey, &mousedown, &rect, &graphics, &backupGraphics, &mandelbrot, &coordinateStack, &radius, &zooms, &updater](const Gempyre::Event& ev) {
+        canvas.subscribe("mouseup", [&mousex, &mousey, &mousedown, &rect, &graphics, &backupGraphics,
+             &mandelbrot, &coordinateStack, &radius, &zooms, &updater, &canvas](const Gempyre::Event& ev) {
             const auto mx = *GempyreUtils::parse<int>(ev.properties.at("clientX")) - rect.x;
             const auto my = *GempyreUtils::parse<int>(ev.properties.at("clientY")) - rect.y;
             mousedown = false;
@@ -87,20 +88,20 @@ int main(int argc, char** argv) {
                 coordinateStack.push_back(mandelbrot->coords());
                 mandelbrot->update(updater);
             }
-            graphics.update();
+            canvas.draw(graphics);
             radius.set_html(Mandelbrot::toString(mandelbrot->radius()));
             zooms.set_html(std::to_string(coordinateStack.size() - 1));
         }, {"clientX", "clientY"});
 
-        canvas.subscribe("mousemove", [&mousex, &mousey, &mousedown, &rect, &graphics, &backupGraphics, &blend](const Gempyre::Event& ev) {
+        canvas.subscribe("mousemove", [&mousex, &mousey, &mousedown, &rect, &graphics, &backupGraphics, &blend, &canvas](const Gempyre::Event& ev) {
             if(mousedown) {
                 const auto mx = *GempyreUtils::parse<int>(ev.properties.at("clientX")) - rect.x;
                 const auto my = *GempyreUtils::parse<int>(ev.properties.at("clientY")) - rect.y;
-                blend.draw_rect(Gempyre::Element::Rect{0, 0, rect.width, rect.height}, Gempyre::Graphics::pix(0x73, 0x73, 0x73, 0x83));
-                blend.draw_rect(Gempyre::Element::Rect{mousex, mousey, mx - mousex, my - mousey}, Gempyre::Graphics::pix(0,0,0,0));
+                blend.draw_rect(Gempyre::Element::Rect{0, 0, rect.width, rect.height}, Gempyre::Bitmap::pix(0x73, 0x73, 0x73, 0x83));
+                blend.draw_rect(Gempyre::Element::Rect{mousex, mousey, mx - mousex, my - mousey}, Gempyre::Bitmap::pix(0,0,0,0));
                 graphics.merge(backupGraphics);
                 graphics.merge(blend);
-                graphics.update();
+                canvas.draw(graphics);
             }
         }, {"clientX", "clientY"}, 200ms);
 

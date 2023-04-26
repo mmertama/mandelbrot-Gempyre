@@ -41,3 +41,4 @@ builds
 src/mprf
 CMakeLists.txt.user
 build 
+.vscode
